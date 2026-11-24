@@ -1,174 +1,228 @@
 import { describe, expect, it } from 'vitest'
 import { STARTERS } from '../../seeds/starters'
 import {
-  applyDelta,
+  analyse,
+  beatsShare,
   behaviourProblems,
-  calibrateDraft,
+  bestLine,
+  bestSingleFix,
   checkScenario,
-  countEndings,
+  echoes,
   endingFor,
+  expectedScore,
+  flagProblems,
+  fromChoice,
+  giveawayProblems,
+  mixProblems,
+  PATHS,
   repairDraft,
-  shuffleOptions,
+  replay,
+  scoreRun,
+  seededRandom,
+  shapeProblems,
+  shuffleDraft,
   splitDraft,
-  turningPoint,
+  toChoice,
+  wayKeysOf,
 } from './engine'
-import type { ScenarioDraft } from './types'
+import { fixture, MIX } from './fixture'
+import type { DraftWay, Grade, ScenarioDraft } from './types'
 
-describe('meters and endings', () => {
-  it('clamps meters to 0-100', () => {
-    expect(applyDelta([95, 5, 50], [10, -10, 0])).toEqual([100, 0, 50])
+const c = toChoice
+/** Choice of the fixture's best way at any decision. */
+const BEST = c(0, 0)
+const RAISE = c(1, 0) // decision 0 slip that raises the flag
+const HIT = c(0, 1) // decision 2 slip that reacts to the flag
+
+describe('scoring', () => {
+  it('maps a score to its band', () => {
+    expect(endingFor(100)).toBe('good')
+    expect(endingFor(90)).toBe('good')
+    expect(endingFor(89)).toBe('ok')
+    expect(endingFor(70)).toBe('ok')
+    expect(endingFor(69)).toBe('bad')
+    expect(endingFor(20)).toBe('bad')
   })
 
-  it('decides the ending from the final meters', () => {
-    expect(endingFor([70, 70, 70])).toBe('good')
-    expect(endingFor([90, 90, 25])).toBe('ok') // high average, but one meter under 30
-    expect(endingFor([50, 50, 50])).toBe('ok')
-    expect(endingFor([80, 80, 15])).toBe('bad') // one meter at 15 or below
-    expect(endingFor([39, 39, 39])).toBe('bad')
+  it('stores a choice as one number', () => {
+    for (let a = 0; a < 3; a++) for (let w = 0; w < 3; w++) expect(fromChoice(c(a, w))).toEqual({ approach: a, way: w })
   })
 
-  it('finds the decision that moved the meters most', () => {
-    const history = [
-      [50, 50, 50],
-      [52, 50, 50],
-      [30, 40, 50],
-      [31, 40, 50],
-    ]
-    expect(turningPoint(history)).toBe(1)
-  })
-})
-
-describe('the six starters', () => {
-  it('has six with unique ids', () => {
-    expect(STARTERS).toHaveLength(6)
-    expect(new Set(STARTERS.map((s) => s.id)).size).toBe(6)
+  it('subtracts the points of each grade from 100', () => {
+    const keys = wayKeysOf(fixture())
+    const run = scoreRun(keys, [BEST, c(0, 1), c(1, 1), c(2, 2)])
+    expect(run.steps.map((s) => s.points)).toEqual([0, 5, 12, 20])
+    expect(run.score).toBe(63)
+    expect(run.ending).toBe('bad')
   })
 
-  for (const starter of STARTERS) {
-    it(`${starter.id} passes every scenario rule`, () => {
-      expect(checkScenario(starter)).toEqual([])
-    })
-  }
+  it('applies a raised flag at a later decision and names the decision that raised it', () => {
+    const keys = wayKeysOf(fixture())
+    const raised = replay(keys, [RAISE, BEST, HIT, BEST])
+    expect(raised[2]).toMatchObject({ grade: 'blunder', base: 'slip', points: 20, causedBy: 0, flag: 'promise' })
+    expect(raised[2].outcome).toBe('The promise comes due.')
+    // The same pick without the earlier raise plays as its own grade.
+    const clean = replay(keys, [BEST, BEST, HIT, BEST])
+    expect(clean[2]).toMatchObject({ grade: 'slip', points: 5, causedBy: -1, flag: '' })
+  })
+
+  it('checks a flag against earlier decisions only', () => {
+    const draft = fixture()
+    const w = draft.decisions[2].approaches[0].ways[1]
+    w.raises = ['promise'] // the reacting way also raises the flag itself
+    const steps = replay(wayKeysOf(draft), [BEST, BEST, HIT, BEST])
+    expect(steps[2].grade).toBe('slip')
+  })
+
+  it('finds the biggest single fix, rescoring later decisions', () => {
+    const keys = wayKeysOf(fixture())
+    // Raise at decision 1 (slip, 5) and get hit at decision 3 (blunder, 20): score 75.
+    const choices = [RAISE, BEST, HIT, BEST]
+    expect(scoreRun(keys, choices).score).toBe(75)
+    // Changing decision 1 to the best way gains 5 and avoids the flag (+15): 20.
+    // Changing decision 3 to the best way also gains 20. Ties go to the earliest.
+    expect(bestSingleFix(keys, choices)).toEqual({ decision: 0, gain: 20 })
+    expect(bestSingleFix(keys, [BEST, BEST, BEST, BEST])).toEqual({ decision: -1, gain: 0 })
+  })
+
+  it('counts every path and the share a score beats', () => {
+    const { scoreCounts, endings, guessAverage } = analyse(wayKeysOf(fixture()))
+    expect(scoreCounts.reduce((a, b) => a + b, 0)).toBe(PATHS)
+    expect(endings.good + endings.ok + endings.bad).toBe(PATHS)
+    expect(beatsShare(scoreCounts, 100)).toBe(99)
+    expect(beatsShare(scoreCounts, 0)).toBe(0)
+    expect(expectedScore(wayKeysOf(fixture()), () => [0, 1, 2, 3, 4, 5, 6, 7, 8])).toBe(guessAverage)
+  })
 })
 
 describe('checkScenario', () => {
-  const base = STARTERS[0]
-  const clone = (): ScenarioDraft => JSON.parse(JSON.stringify(base))
-
-  it('refuses a scene without exactly one best, ok and trap', () => {
-    const d = clone()
-    d.scenes[2].options[0].kind = 'best'
-    d.scenes[2].options[1].kind = 'best'
-    expect(checkScenario(d).join()).toMatch(/scene 3 needs one best, one ok and one trap/)
+  it('accepts the fixture', () => {
+    expect(checkScenario(fixture())).toEqual([])
   })
 
-  it('refuses meter changes outside -25..25', () => {
-    const d = clone()
-    d.scenes[0].options[0].delta = [40, 0, 0]
-    expect(checkScenario(d).join()).toMatch(/scene 1 option 1 needs 3 whole-number changes/)
+  it('refuses wrong counts, unknown flags and an override that is not worse', () => {
+    const draft = fixture()
+    draft.decisions[1].approaches[2].ways.pop()
+    draft.decisions[0].approaches[0].ways[1].raises = ['nope']
+    draft.decisions[2].approaches[0].ways[1].ifRaised!.grade = 'slip'
+    const problems = shapeProblems(draft)
+    expect(problems).toContain('decision 2 approach 3 needs exactly 3 ways')
+    expect(problems).toContain('decision 1 approach 1 way 2 raises a flag that does not exist')
+    expect(problems).toContain('decision 3 approach 1 way 2 flag reaction must be graded worse than the way itself')
   })
 
-  it('refuses a scenario where every path ends the same way', () => {
-    const d = clone()
-    for (const scene of d.scenes) for (const o of scene.options) o.delta = o.kind === 'best' ? [2, 1, 0] : o.kind === 'ok' ? [1, 0, 0] : [0, 0, 0]
-    const problems = checkScenario(d).join()
-    expect(problems).toMatch(/picking every best option ends ok/)
-    expect(problems).toMatch(/paths end good/)
+  it('refuses bad flag ids and too many flags', () => {
+    const draft = fixture()
+    draft.flags = [{ id: 'Bad Id', label: 'x' }]
+    expect(shapeProblems(draft)).toContain('flag 1 id must be lowercase letters, digits or dashes')
+    draft.flags = ['a', 'b', 'c', 'd'].map((id) => ({ id, label: id }))
+    expect(shapeProblems(draft)).toEqual(['needs 1 to 3 flags'])
   })
 
-  it('does not throw on garbage', () => {
-    expect(checkScenario({} as ScenarioDraft).length).toBeGreaterThan(0)
-    expect(checkScenario(null as unknown as ScenarioDraft).length).toBeGreaterThan(0)
-  })
-})
+  it('makes the wrong plan cost more than an imprecise way', () => {
+    const twoBest = fixture()
+    twoBest.decisions[0].approaches[1].ways[1].grade = 'best'
+    expect(mixProblems(twoBest)).toContain('decision 1 needs exactly one best way')
 
-describe('splitDraft', () => {
-  it('keeps the hidden half out of the readable half', () => {
-    const { scenario, answers } = splitDraft(STARTERS[0])
-    const readable = JSON.stringify(scenario)
-    const why = STARTERS[0].scenes[0].options[0].why
-    expect(readable).not.toContain(why)
-    expect(readable).not.toContain('"kind"')
-    expect(readable).not.toContain('"delta"')
-    expect(answers.effects[0][0].why).toBe(why)
-    expect(scenario.scenes[0].options).toHaveLength(3)
-  })
-})
+    const noSlip = fixture()
+    noSlip.decisions[1].approaches[0].ways[1].grade = 'mistake'
+    expect(mixProblems(noSlip)).toContain('decision 2: the approach with the best way also needs a slip and a mistake or blunder')
 
-describe('repairDraft and shuffleOptions', () => {
-  it('rounds and clamps numbers and trims text', () => {
-    const d: ScenarioDraft = JSON.parse(JSON.stringify(STARTERS[0]))
-    d.title = '  Spaced  '
-    d.scenes[0].options[0].delta = [30.4, -2.6, 0]
-    const r = repairDraft(d)
-    expect(r.title).toBe('Spaced')
-    expect(r.scenes[0].options[0].delta).toEqual([25, -3, 0])
+    const cheapWrong = fixture()
+    cheapWrong.decisions[2].approaches[2].ways[0].grade = 'slip'
+    expect(mixProblems(cheapWrong)).toContain('decision 3: the two other approaches may hold at most one slip between them')
+
+    const noBlunder = fixture()
+    for (const a of noBlunder.decisions[3].approaches) for (const w of a.ways) if (w.grade === 'blunder') w.grade = 'mistake'
+    expect(mixProblems(noBlunder)).toContain('decision 4 needs at least one blunder')
   })
 
-  it('moves options without changing what any option does', () => {
-    let seed = 1
-    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
-    const shuffled = shuffleOptions(STARTERS[1], random)
-    expect(checkScenario(shuffled)).toEqual([])
-    const before = countEndings(STARTERS[1].meters.map((m) => m.start), splitDraft(STARTERS[1]).answers.effects)
-    const after = countEndings(shuffled.meters.map((m) => m.start), splitDraft(shuffled).answers.effects)
-    expect(after).toEqual(before)
-  })
-})
+  it('requires every flag to matter later and the best line to score 100', () => {
+    const unused = fixture()
+    delete unused.decisions[2].approaches[0].ways[1].ifRaised
+    expect(flagProblems(unused)).toContain('flag "promise" must be raised at one decision and change a way at a later one')
 
-describe('calibrateDraft', () => {
-  const copy = (d: ScenarioDraft): ScenarioDraft => JSON.parse(JSON.stringify(d))
-  let seed = 7
-  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
-  const randomInt = (lo: number, hi: number) => lo + Math.floor(random() * (hi - lo + 1))
+    const tooEarly = fixture()
+    tooEarly.decisions[0].approaches[0].ways[2].ifRaised = { flag: 'promise', grade: 'blunder', outcome: 'o', why: 'w' }
+    expect(flagProblems(tooEarly)).toContain('decision 1: a way reacts to flag "promise", which no earlier decision raises')
 
-  it('returns a draft whose numbers already pass unchanged', () => {
-    expect(calibrateDraft(STARTERS[0])).toBe(STARTERS[0])
+    const hitsBest = fixture()
+    hitsBest.decisions[0].approaches[0].ways[0].raises = ['promise']
+    hitsBest.decisions[3].approaches[0].ways[0].ifRaised = { flag: 'promise', grade: 'slip', outcome: 'o', why: 'w' }
+    expect(flagProblems(hitsBest)).toContain('taking the best way at every decision scores 95, not 100')
   })
 
-  it('returns null for a draft with shape problems', () => {
-    const d = copy(STARTERS[0])
-    d.scenes.pop()
-    expect(calibrateDraft(d)).toBeNull()
+  it('refuses surface giveaways', () => {
+    const long = fixture()
+    long.decisions[0].approaches[0].ways[0].text = 'A much, much longer option text that runs on and on'
+    expect(giveawayProblems(long)).toContain('decision 1 approach 1: way texts differ too much in length')
+
+    const cue = fixture()
+    cue.decisions[1].approaches[0].ways[0].text = 'Calmly do 100 for this step'
+    expect(giveawayProblems(cue)).toContain('decision 2: only the best way uses a sounds-right word')
+    cue.decisions[1].approaches[0].ways[2].text = 'Politely do 102 for this step'
+    expect(giveawayProblems(cue)).not.toContain('decision 2: only the best way uses a sounds-right word')
+
+    const echo = fixture()
+    echo.decisions[0].approaches[1].ways[1].why = 'Because option 010 for this step was safer.'
+    expect(giveawayProblems(echo)).toContain('decision 1 approach 2 way 2: its why copies a sibling way\'s text')
   })
 
-  it('makes a draft with all-zero numbers playable', () => {
-    const d = copy(STARTERS[0])
-    d.scenes.forEach((scene) => scene.options.forEach((o) => (o.delta = [0, 0, 0])))
-    expect(behaviourProblems(d)).not.toEqual([])
-    const tuned = calibrateDraft(d)!
-    expect(checkScenario(tuned)).toEqual([])
-  })
-
-  it('makes every draft with random numbers playable, changing only numbers', () => {
-    for (let n = 0; n < 300; n++) {
-      const d = copy(STARTERS[n % STARTERS.length])
-      d.meters.forEach((m) => (m.start = randomInt(30, 70)))
-      d.scenes.forEach((scene) => scene.options.forEach((o) => (o.delta = [0, 0, 0].map(() => randomInt(-25, 25)))))
-      const tuned = calibrateDraft(d)
-      expect(tuned, `draft ${n}`).not.toBeNull()
-      expect(checkScenario(tuned!), `draft ${n}`).toEqual([])
-      const text = (x: ScenarioDraft) =>
-        JSON.stringify({ ...x, meters: x.meters.map((m) => m.name), scenes: x.scenes.map((s) => [s.prompt, s.options.map((o) => [o.text, o.kind, o.outcome, o.why])]) })
-      expect(text(tuned!)).toBe(text(d))
+  it('refuses a scenario where always picking the longest option wins', () => {
+    const draft = fixture()
+    for (const decision of draft.decisions) {
+      decision.approaches[0].text += ' (+ten more)'
+      decision.approaches[0].ways[0].text += ' (+ten more)'
     }
+    const problems = giveawayProblems(draft)
+    expect(problems.some((p) => p.startsWith('picking always the longest averages 100'))).toBe(true)
   })
 
-  // An ok pick must total a little above zero, so an ok option the writer made
-  // negative overall has to change direction somewhere; best and trap need not.
-  it("keeps each best and trap option's direction when a rescale is enough", () => {
-    const d = copy(STARTERS[0])
-    // Halve every change: same pattern, too weak to reach the good ending.
-    d.scenes.forEach((scene) => scene.options.forEach((o) => (o.delta = o.delta.map((v) => Math.trunc(v / 2)))))
-    const tuned = calibrateDraft(d)!
-    expect(checkScenario(tuned)).toEqual([])
-    tuned.scenes.forEach((scene, s) =>
-      scene.options.forEach((o, i) =>
-        o.delta.forEach((v, k) => {
-          const before = d.scenes[s].options[i].delta[k]
-          if (before !== 0 && o.kind !== 'ok') expect(Math.sign(v) === Math.sign(before) || v === 0, `scene ${s} option ${i} meter ${k}`).toBe(true)
-        }),
-      ),
-    )
+  it('refuses a scenario that random picking scores well on', () => {
+    const lenient = fixture()
+    for (const d of lenient.decisions) for (const a of d.approaches) for (const w of a.ways) if (w.grade !== 'best') w.grade = 'slip'
+    const problems = behaviourProblems(lenient)
+    expect(problems.some((p) => p.includes('of paths end bad'))).toBe(true)
+    expect(problems.some((p) => p.startsWith('random picking averages'))).toBe(true)
+  })
+
+  it('finds runs of repeated words', () => {
+    expect(echoes('it was the right thing to do', 'the right thing to do now')).toBe(true)
+    expect(echoes('it was the right call', 'the right thing to do now')).toBe(false)
+  })
+})
+
+describe('drafts', () => {
+  it('splits a draft so the readable half holds no answers', () => {
+    const { scenario, answers } = splitDraft(fixture())
+    expect(JSON.stringify(scenario)).not.toMatch(/"(grade|why|outcome|raises|ifRaised|wayKeys)"\s*:/)
+    expect(scenario.guessAverage).toBe(analyse(answers.wayKeys).guessAverage)
+    expect(answers.wayKeys[0][1][0].raises).toEqual(['promise'])
+    expect(answers.format).toBe(2)
+  })
+
+  it('trims text without inventing parts', () => {
+    const draft = fixture()
+    draft.title = '  Fixture  '
+    draft.decisions[0].approaches[0].ways[0].why = ' Reason. '
+    const fixed = repairDraft(draft)
+    expect(fixed.title).toBe('Fixture')
+    expect(fixed.decisions[0].approaches[0].ways[0].why).toBe('Reason.')
+    expect(fixed.decisions[0].approaches[1].ways[0].raises).toEqual(['promise'])
+  })
+
+  it('shuffles the same way for the same seed and keeps the scenario valid', () => {
+    const a = shuffleDraft(fixture(), seededRandom('fixture@v2'))
+    const b = shuffleDraft(fixture(), seededRandom('fixture@v2'))
+    expect(a).toEqual(b)
+    expect(checkScenario(a)).toEqual([])
+    expect(scoreRun(wayKeysOf(a), bestLine(a)).score).toBe(100)
+    expect(analyse(wayKeysOf(a)).guessAverage).toBe(analyse(wayKeysOf(fixture())).guessAverage)
+  })
+})
+
+describe('starters', () => {
+  it.each(STARTERS.map((s) => [s.id, s] as const))('%s passes every check', (_id, starter) => {
+    expect(checkScenario(starter)).toEqual([])
   })
 })

@@ -2,108 +2,295 @@
  * The game rules, as plain functions with no I/O, so the same code runs in the
  * worker (actions) and in unit tests.
  *
- * Meters run 0-100 and higher is always better. Each pick adds its delta to
- * the meters, clamped to 0-100. After five picks the final meters decide the
- * ending (`endingFor`).
+ * A run starts at 100. Each locked-in way costs the points of its grade
+ * (GRADE_POINTS). A way can raise a flag; a way at a later decision that
+ * names that flag in `ifRaised` then plays at its worse override grade. The
+ * score is 100 minus the points lost, and the score band decides the ending.
  */
 import {
-  METERS,
-  OPTIONS,
-  SCENES,
-  type Effect,
+  APPROACHES,
+  BANDS,
+  CHOICES,
+  DECISIONS,
+  FORMAT,
+  GRADE_POINTS,
+  WAYS,
+  type DraftWay,
   type Ending,
-  type OptionKind,
+  type Fix,
+  type Grade,
   type PublicScenario,
   type ScenarioAnswers,
   type ScenarioDraft,
+  type StepResult,
+  type WayAnswer,
 } from './types'
-
-export const METER_MIN = 0
-export const METER_MAX = 100
-export const DELTA_LIMIT = 25
-export const START_MIN = 30
-export const START_MAX = 70
-/** Of the 3^5 = 243 possible paths, each ending must be reachable by at least this many. */
-export const MIN_PATHS_PER_ENDING = 5
 
 /** Text limits checked on every scenario, starters and generated alike. */
 export const LIMITS = {
   title: 80,
   situation: 400,
   setting: 600,
-  meterName: 24,
   prompt: 300,
-  optionText: 140,
-  outcome: 400,
-  why: 300,
+  approach: 90,
+  way: 120,
+  outcome: 220,
+  why: 220,
   ending: 600,
+  flagLabel: 60,
 } as const
 
 /** Shortest situation the "write your own" box accepts (the longest is LIMITS.situation). */
 export const SITUATION_MIN = 10
 
-export function clampMeter(value: number): number {
-  return Math.max(METER_MIN, Math.min(METER_MAX, value))
+export const MAX_FLAGS = 3
+export const FLAG_ID = /^[a-z][a-z0-9-]{0,23}$/
+
+/** Every possible path: 9 choices at each of 4 decisions. */
+export const PATHS = CHOICES ** DECISIONS
+
+/** What random picking must look like across every path (see behaviourProblems). */
+export const RANDOM_PLAY = {
+  minBadShare: 0.6,
+  maxGoodShare: 0.03,
+  minOkShare: 0.05,
+  minAverage: 35,
+  maxAverage: 65,
 }
 
-export function applyDelta(meters: number[], delta: number[]): number[] {
-  return meters.map((value, i) => clampMeter(value + (delta[i] ?? 0)))
+/** No simple guessing rule (always the longest, and so on) may average more than this above random. */
+export const HEURISTIC_MARGIN = 10
+
+/** Sibling texts: the longest at most this many times the shortest, unless they differ by at most LENGTH_SLACK characters. */
+export const LENGTH_RATIO = 1.6
+export const LENGTH_SLACK = 20
+
+/** Words that make an option sound right. Allowed in the right option only if a sibling also has one. */
+export const CUE_WORDS = [
+  'carefully',
+  'calmly',
+  'politely',
+  'respectfully',
+  'kindly',
+  'gently',
+  'honestly',
+  'professionally',
+  'thoughtfully',
+  'patiently',
+  'tactfully',
+  'appropriately',
+  'make sure',
+]
+const CUE_PATTERN = new RegExp(`\\b(${CUE_WORDS.join('|')})\\b`, 'i')
+
+/** A way's why may not repeat this many consecutive words of a sibling way's text. */
+export const ECHO_WORDS = 5
+
+const GRADES: Grade[] = ['best', 'slip', 'mistake', 'blunder']
+
+export const toChoice = (approach: number, way: number) => approach * WAYS + way
+export const fromChoice = (choice: number) => ({ approach: Math.floor(choice / WAYS), way: choice % WAYS })
+
+export function isChoice(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < CHOICES
+}
+
+export function endingFor(score: number): Ending {
+  if (score >= BANDS.good) return 'good'
+  if (score >= BANDS.ok) return 'ok'
+  return 'bad'
+}
+
+/** One scored step, with the texts the player sees (outcome now, why once unlocked). */
+export interface StepDetail extends StepResult {
+  outcome: string
+  why: string
+  /** The flag that changed this step; '' if none. */
+  flag: string
 }
 
 /**
- * bad: any meter at 15 or below, or the average under 40.
- * good: average 65 or more with no meter under 30.
- * ok: everything in between.
+ * Scores the choices made so far, in order. At each decision the way's
+ * override applies when its flag was raised at an earlier decision; the
+ * way's own raises are applied after it is scored. causedBy is the earliest
+ * decision that raised the flag.
  */
-export function endingFor(meters: number[]): Ending {
-  const mean = meters.reduce((sum, v) => sum + v, 0) / meters.length
-  if (meters.some((v) => v <= 15) || mean < 40) return 'bad'
-  if (mean >= 65 && !meters.some((v) => v < 30)) return 'good'
-  return 'ok'
+export function replay(wayKeys: WayAnswer[][][], choices: number[]): StepDetail[] {
+  const raisedAt = new Map<string, number>()
+  return choices.map((choice, d) => {
+    const { approach, way } = fromChoice(choice)
+    const key = wayKeys[d][approach][way]
+    const o = key.ifRaised
+    const hit = o && raisedAt.has(o.flag) ? o : null
+    const grade = hit ? hit.grade : key.grade
+    for (const flag of key.raises ?? []) if (!raisedAt.has(flag)) raisedAt.set(flag, d)
+    return {
+      grade,
+      base: key.grade,
+      points: GRADE_POINTS[grade],
+      causedBy: hit ? raisedAt.get(hit.flag)! : -1,
+      flag: hit ? hit.flag : '',
+      outcome: hit ? hit.outcome : key.outcome,
+      why: hit ? hit.why : key.why,
+    }
+  })
 }
 
-/** Final meters after picking `path[i]` at each decision i. */
-export function playPath(starts: number[], effects: Effect[][], path: number[]): number[] {
-  return path.reduce((meters, option, scene) => applyDelta(meters, effects[scene][option].delta), starts)
+/** Score of a full or partial path. Max loss is 4 x 20 = 80, so it never goes below 20; max(0) is only a guard. */
+export function scoreOf(steps: StepResult[]): number {
+  return Math.max(0, 100 - steps.reduce((sum, s) => sum + s.points, 0))
 }
 
-/** How many of the 243 possible paths end good, ok and bad. */
-export function countEndings(starts: number[], effects: Effect[][]): Record<Ending, number> {
-  const counts: Record<Ending, number> = { good: 0, ok: 0, bad: 0 }
-  const total = OPTIONS ** SCENES
-  for (let n = 0; n < total; n++) {
-    const path: number[] = []
+export function scoreRun(wayKeys: WayAnswer[][][], choices: number[]) {
+  const details = replay(wayKeys, choices)
+  const steps: StepResult[] = details.map(({ grade, points, base, causedBy }) => ({ grade, points, base, causedBy }))
+  const score = scoreOf(steps)
+  return { details, steps, score, ending: endingFor(score) }
+}
+
+/** Calls `visit` with every one of the 6,561 full paths. */
+function forEachPath(visit: (choices: number[]) => void) {
+  const choices = new Array<number>(DECISIONS).fill(0)
+  for (let n = 0; n < PATHS; n++) {
     let rest = n
-    for (let i = 0; i < SCENES; i++) {
-      path.push(rest % OPTIONS)
-      rest = Math.floor(rest / OPTIONS)
+    for (let d = 0; d < DECISIONS; d++) {
+      choices[d] = rest % CHOICES
+      rest = Math.floor(rest / CHOICES)
     }
-    counts[endingFor(playPath(starts, effects, path))]++
+    visit(choices)
   }
-  return counts
 }
 
-/** The decision whose pick moved the meters the most (sum of absolute changes). */
-export function turningPoint(meterHistory: number[][]): number {
-  let best = 0
-  let bestSwing = -1
-  for (let i = 0; i + 1 < meterHistory.length; i++) {
-    const swing = meterHistory[i + 1].reduce((sum, v, k) => sum + Math.abs(v - meterHistory[i][k]), 0)
-    if (swing > bestSwing) {
-      best = i
-      bestSwing = swing
-    }
-  }
-  return best
+export interface Analysis {
+  /** Mean score over every path. */
+  guessAverage: number
+  endings: Record<Ending, number>
+  /** scoreCounts[s] = how many paths score exactly s. */
+  scoreCounts: number[]
 }
 
-function sum(values: number[]): number {
-  return values.reduce((a, b) => a + b, 0)
+export function analyse(wayKeys: WayAnswer[][][]): Analysis {
+  const scoreCounts = new Array<number>(101).fill(0)
+  const endings: Record<Ending, number> = { good: 0, ok: 0, bad: 0 }
+  let total = 0
+  forEachPath((choices) => {
+    const score = scoreOf(replay(wayKeys, choices))
+    scoreCounts[score]++
+    endings[endingFor(score)]++
+    total += score
+  })
+  return { guessAverage: round1(total / PATHS), endings, scoreCounts }
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10
+}
+
+/** Percent of all paths that score strictly lower than `score`, rounded down. */
+export function beatsShare(scoreCounts: number[], score: number): number {
+  let lower = 0
+  for (let s = 0; s < score && s < scoreCounts.length; s++) lower += scoreCounts[s]
+  return Math.floor((lower / PATHS) * 100)
+}
+
+/**
+ * Tries every one-choice change to a full path (8 other choices at each of 4
+ * decisions) and returns the one that gains the most. Later steps are
+ * rescored, since a change can raise or avoid a flag. Ties go to the earliest
+ * decision. Decision -1 when no change gains.
+ */
+export function bestSingleFix(wayKeys: WayAnswer[][][], choices: number[]): Fix {
+  const base = scoreOf(replay(wayKeys, choices))
+  let fix: Fix = { decision: -1, gain: 0 }
+  for (let d = 0; d < choices.length; d++) {
+    for (let c = 0; c < CHOICES; c++) {
+      if (c === choices[d]) continue
+      const changed = [...choices]
+      changed[d] = c
+      const gain = scoreOf(replay(wayKeys, changed)) - base
+      if (gain > fix.gain) fix = { decision: d, gain }
+    }
+  }
+  return fix
+}
+
+/**
+ * The expected score of a player who, at each decision, picks evenly among
+ * the choices `candidates(d)` returns. Every branch is followed, so flags
+ * raised on one branch count only on that branch.
+ */
+export function expectedScore(wayKeys: WayAnswer[][][], candidates: (d: number) => number[]): number {
+  const walk = (choices: number[]): number => {
+    if (choices.length === DECISIONS) return scoreOf(replay(wayKeys, choices))
+    const options = candidates(choices.length)
+    return options.reduce((sum, c) => sum + walk([...choices, c]), 0) / options.length
+  }
+  return round1(walk([]))
+}
+
+/** Indexes of the items `pick` keeps from `values`; all of them when it keeps none. */
+function keepIndexes(values: string[], pick: TextRule): number[] {
+  const kept = values.map((v, i) => (pick(v, values) ? i : -1)).filter((i) => i >= 0)
+  return kept.length > 0 ? kept : values.map((_, i) => i)
+}
+
+type TextRule = (text: string, all: string[]) => boolean
+const longest: TextRule = (t, all) => t.length === Math.max(...all.map((a) => a.length))
+const shortest: TextRule = (t, all) => t.length === Math.min(...all.map((a) => a.length))
+const middle: TextRule = (t, all) => t.length === all.map((a) => a.length).sort((a, b) => a - b)[1]
+const cued: TextRule = (t) => CUE_PATTERN.test(t)
+
+/** The guessing rules a scenario must not reward (see giveawayProblems). Ties are split evenly. */
+export const HEURISTICS: Record<string, TextRule> = {
+  'always the longest': longest,
+  'always the shortest': shortest,
+  'always the middle length': middle,
+  'prefer sounds-right words': cued,
+}
+
+/** The choices a text-only rule picks at decision `d`: first an approach, then a way inside it. */
+export function heuristicChoices(draft: ScenarioDraft, rule: TextRule, d: number): number[] {
+  const approaches = draft.decisions[d].approaches
+  const picked = keepIndexes(
+    approaches.map((a) => a.text),
+    rule,
+  )
+  return picked.flatMap((a) =>
+    keepIndexes(
+      approaches[a].ways.map((w) => w.text),
+      rule,
+    ).map((w) => toChoice(a, w)),
+  )
+}
+
+/** The hidden half of every way, in the shape `scenario_answers` stores. */
+export function wayKeysOf(draft: ScenarioDraft): WayAnswer[][][] {
+  return draft.decisions.map((decision) =>
+    decision.approaches.map((approach) =>
+      approach.ways.map((w) => {
+        const key: WayAnswer = { grade: w.grade, outcome: w.outcome, why: w.why }
+        if (w.raises && w.raises.length > 0) key.raises = [...w.raises]
+        if (w.ifRaised) key.ifRaised = { ...w.ifRaised }
+        return key
+      }),
+    ),
+  )
+}
+
+/** The path that takes the best way at every decision. */
+export function bestLine(draft: ScenarioDraft): number[] {
+  return draft.decisions.map((decision) => {
+    for (let a = 0; a < APPROACHES; a++) {
+      const w = decision.approaches[a].ways.findIndex((way) => way.grade === 'best')
+      if (w >= 0) return toChoice(a, w)
+    }
+    return 0
+  })
 }
 
 function textProblem(label: string, value: unknown, max: number): string | null {
   if (typeof value !== 'string' || value.trim() === '') return `${label} is empty`
-  if (value.length > max) return `${label} is longer than ${max} characters`
+  if (value.length > max) return `${label} is ${value.length} characters, over the ${max} limit`
   return null
 }
 
@@ -111,18 +298,20 @@ function textProblem(label: string, value: unknown, max: number): string | null 
  * Every rule a scenario must pass before it can be played. Returns the
  * problems found; an empty list means the scenario is playable.
  *
- * First the shape and text limits (`shapeProblems`), then, only if those
- * pass, how the numbers play out (`behaviourProblems`).
+ * First the shape, text limits and flag references (`shapeProblems`); only if
+ * those pass, the grade mix, flags and giveaways; only if those pass, how
+ * random play scores.
  */
 export function checkScenario(draft: ScenarioDraft): string[] {
-  const problems = shapeProblems(draft)
-  return problems.length > 0 ? problems : behaviourProblems(draft)
+  const shape = shapeProblems(draft)
+  if (shape.length > 0) return shape
+  const content = [...mixProblems(draft), ...flagProblems(draft), ...giveawayProblems(draft)]
+  return content.length > 0 ? content : behaviourProblems(draft)
 }
 
 /**
- * Counts, kinds, text limits and the form of every number: everything except
- * how the picks play out. Stops early when a list has the wrong length, since
- * the checks after it index into that list.
+ * Counts, text limits, grades and flag references. Stops early when a list
+ * has the wrong length, since the checks after it index into that list.
  */
 export function shapeProblems(draft: ScenarioDraft): string[] {
   const problems: string[] = []
@@ -137,192 +326,269 @@ export function shapeProblems(draft: ScenarioDraft): string[] {
     add(textProblem(`${ending} ending`, draft?.endings?.[ending], LIMITS.ending))
   }
 
-  if (!Array.isArray(draft?.meters) || draft.meters.length !== METERS) {
-    problems.push(`needs exactly ${METERS} meters`)
+  const flags = Array.isArray(draft?.flags) ? draft.flags : null
+  if (!flags || flags.length < 1 || flags.length > MAX_FLAGS) {
+    problems.push(`needs 1 to ${MAX_FLAGS} flags`)
     return problems
   }
-  draft.meters.forEach((m, i) => {
-    add(textProblem(`meter ${i + 1} name`, m?.name, LIMITS.meterName))
-    if (!Number.isInteger(m?.start) || m.start < START_MIN || m.start > START_MAX) {
-      problems.push(`meter ${i + 1} must start between ${START_MIN} and ${START_MAX}`)
-    }
+  const ids = new Set<string>()
+  flags.forEach((f, i) => {
+    if (typeof f?.id !== 'string' || !FLAG_ID.test(f.id)) problems.push(`flag ${i + 1} id must be lowercase letters, digits or dashes`)
+    else if (ids.has(f.id)) problems.push(`flag id "${f.id}" is used twice`)
+    else ids.add(f.id)
+    add(textProblem(`flag ${i + 1} label`, f?.label, LIMITS.flagLabel))
   })
 
-  if (!Array.isArray(draft.scenes) || draft.scenes.length !== SCENES) {
-    problems.push(`needs exactly ${SCENES} scenes`)
+  if (!Array.isArray(draft.decisions) || draft.decisions.length !== DECISIONS) {
+    problems.push(`needs exactly ${DECISIONS} decisions`)
     return problems
   }
-  draft.scenes.forEach((scene, s) => {
-    add(textProblem(`scene ${s + 1} prompt`, scene?.prompt, LIMITS.prompt))
-    if (!Array.isArray(scene?.options) || scene.options.length !== OPTIONS) {
-      problems.push(`scene ${s + 1} needs exactly ${OPTIONS} options`)
+  draft.decisions.forEach((decision, d) => {
+    const at = `decision ${d + 1}`
+    add(textProblem(`${at} prompt`, decision?.prompt, LIMITS.prompt))
+    if (!Array.isArray(decision?.approaches) || decision.approaches.length !== APPROACHES) {
+      problems.push(`${at} needs exactly ${APPROACHES} approaches`)
       return
     }
-    scene.options.forEach((o, i) => {
-      const where = `scene ${s + 1} option ${i + 1}`
-      add(textProblem(`${where} text`, o?.text, LIMITS.optionText))
-      add(textProblem(`${where} outcome`, o?.outcome, LIMITS.outcome))
-      add(textProblem(`${where} why`, o?.why, LIMITS.why))
-      const deltaOk =
-        Array.isArray(o?.delta) &&
-        o.delta.length === METERS &&
-        o.delta.every((d) => Number.isInteger(d) && Math.abs(d) <= DELTA_LIMIT)
-      if (!deltaOk) problems.push(`${where} needs ${METERS} whole-number changes between -${DELTA_LIMIT} and ${DELTA_LIMIT}`)
+    decision.approaches.forEach((approach, a) => {
+      const where = `${at} approach ${a + 1}`
+      add(textProblem(`${where} text`, approach?.text, LIMITS.approach))
+      if (!Array.isArray(approach?.ways) || approach.ways.length !== WAYS) {
+        problems.push(`${where} needs exactly ${WAYS} ways`)
+        return
+      }
+      approach.ways.forEach((way, w) => problems.push(...wayProblems(way, `${where} way ${w + 1}`, ids)))
     })
-    const kinds = scene.options.map((o) => o?.kind).sort().join(',')
-    if (kinds !== 'best,ok,trap') {
-      problems.push(`scene ${s + 1} needs one best, one ok and one trap option`)
+  })
+  return problems
+}
+
+function wayProblems(way: DraftWay, where: string, ids: Set<string>): string[] {
+  const problems: string[] = []
+  const add = (p: string | null) => {
+    if (p) problems.push(p)
+  }
+  add(textProblem(`${where} text`, way?.text, LIMITS.way))
+  add(textProblem(`${where} outcome`, way?.outcome, LIMITS.outcome))
+  add(textProblem(`${where} why`, way?.why, LIMITS.why))
+  if (!GRADES.includes(way?.grade)) problems.push(`${where} needs a grade: best, slip, mistake or blunder`)
+  if (way?.raises !== undefined) {
+    if (!Array.isArray(way.raises) || way.raises.some((f) => !ids.has(f))) problems.push(`${where} raises a flag that does not exist`)
+    else if (new Set(way.raises).size !== way.raises.length) problems.push(`${where} raises the same flag twice`)
+  }
+  const o = way?.ifRaised
+  if (o !== undefined) {
+    if (!ids.has(o?.flag)) problems.push(`${where} reacts to a flag that does not exist`)
+    if (!GRADES.includes(o?.grade)) problems.push(`${where} flag reaction needs a grade`)
+    else if (GRADES.includes(way.grade) && GRADE_POINTS[o.grade] <= GRADE_POINTS[way.grade]) {
+      problems.push(`${where} flag reaction must be graded worse than the way itself`)
     }
+    add(textProblem(`${where} flag reaction outcome`, o?.outcome, LIMITS.outcome))
+    add(textProblem(`${where} flag reaction why`, o?.why, LIMITS.why))
+  }
+  return problems
+}
+
+/**
+ * The grade mix of each decision, so that the wrong plan costs more than an
+ * imprecise way of carrying out the right one:
+ * - exactly one best way;
+ * - its approach (the right one) also holds a slip and a mistake or blunder;
+ * - the other two approaches hold at most one slip between them, and every
+ *   other way in them is a mistake or blunder;
+ * - at least one blunder.
+ */
+export function mixProblems(draft: ScenarioDraft): string[] {
+  const problems: string[] = []
+  draft.decisions.forEach((decision, d) => {
+    const at = `decision ${d + 1}`
+    const grades = decision.approaches.map((a) => a.ways.map((w) => w.grade))
+    const all = grades.flat()
+    const count = (g: Grade, list: Grade[] = all) => list.filter((x) => x === g).length
+    if (count('best') !== 1) {
+      problems.push(`${at} needs exactly one best way`)
+      return
+    }
+    const right = grades.findIndex((list) => list.includes('best'))
+    const r = grades[right]
+    if (count('slip', r) < 1 || count('mistake', r) + count('blunder', r) < 1) {
+      problems.push(`${at}: the approach with the best way also needs a slip and a mistake or blunder`)
+    }
+    const others = grades.filter((_, a) => a !== right).flat()
+    if (count('slip', others) > 1) problems.push(`${at}: the two other approaches may hold at most one slip between them`)
+    if (count('blunder') < 1) problems.push(`${at} needs at least one blunder`)
   })
   return problems
 }
 
 /**
- * Checks that the choices matter. Call it only on a draft with no shape
- * problems. Within each decision the best option's deltas must sum higher
- * than the ok option's, and the ok option's higher than the trap's; picking
- * the best option at every decision must end good, the ok option at every
- * decision ok, and the trap at every decision bad; and across all 243 paths
- * each ending must be reached at least MIN_PATHS_PER_ENDING times. It does
- * not promise that one best pick on a mixed path always helps every meter.
+ * Flags must matter and must not touch the best line: each flag is named by
+ * an override at a later decision than one that raises it, every override
+ * has an earlier raise, and taking the best way at every decision scores
+ * exactly 100.
  */
+export function flagProblems(draft: ScenarioDraft): string[] {
+  const problems: string[] = []
+  const ways = draft.decisions.map((decision) => decision.approaches.flatMap((a) => a.ways))
+  for (const flag of draft.flags) {
+    const raisedAt = ways.findIndex((list) => list.some((w) => w.raises?.includes(flag.id)))
+    const hitLater = raisedAt >= 0 && ways.some((list, d) => d > raisedAt && list.some((w) => w.ifRaised?.flag === flag.id))
+    if (!hitLater) problems.push(`flag "${flag.id}" must be raised at one decision and change a way at a later one`)
+  }
+  ways.forEach((list, d) => {
+    for (const w of list) {
+      if (!w.ifRaised) continue
+      const flag = w.ifRaised.flag
+      const earlier = ways.slice(0, d).some((prev) => prev.some((p) => p.raises?.includes(flag)))
+      if (!earlier) problems.push(`decision ${d + 1}: a way reacts to flag "${flag}", which no earlier decision raises`)
+    }
+  })
+  const best = scoreOf(replay(wayKeysOf(draft), bestLine(draft)))
+  if (best !== 100) problems.push(`taking the best way at every decision scores ${best}, not 100`)
+  return problems
+}
+
+function wordsOf(text: string): string[] {
+  return text.toLowerCase().match(/[a-z0-9']+/g) ?? []
+}
+
+/** True when `text` repeats ECHO_WORDS or more consecutive words of `source`. */
+export function echoes(text: string, source: string): boolean {
+  const src = wordsOf(source)
+  const runs = new Set<string>()
+  for (let i = 0; i + ECHO_WORDS <= src.length; i++) runs.add(src.slice(i, i + ECHO_WORDS).join(' '))
+  const words = wordsOf(text)
+  for (let i = 0; i + ECHO_WORDS <= words.length; i++) {
+    if (runs.has(words.slice(i, i + ECHO_WORDS).join(' '))) return true
+  }
+  return false
+}
+
+/** True when sibling texts are similar enough in length (see LENGTH_RATIO). */
+export function lengthsClose(texts: string[]): boolean {
+  const lengths = texts.map((t) => t.length)
+  const lo = Math.min(...lengths)
+  const hi = Math.max(...lengths)
+  return hi - lo <= LENGTH_SLACK || hi <= LENGTH_RATIO * lo
+}
+
+/** True when the right item uses a sounds-right word and none of its siblings does. */
+function loneCue(texts: string[], right: number): boolean {
+  return right >= 0 && CUE_PATTERN.test(texts[right]) && !texts.some((t, i) => i !== right && CUE_PATTERN.test(t))
+}
+
+/**
+ * Surface clues that would let a player find the right option without
+ * understanding the situation: sibling lengths far apart, a sounds-right word
+ * only on the right option, a why that copies a sibling's text, and any
+ * simple guessing rule scoring well above random.
+ */
+export function giveawayProblems(draft: ScenarioDraft): string[] {
+  const problems: string[] = []
+  draft.decisions.forEach((decision, d) => {
+    const at = `decision ${d + 1}`
+    const approachTexts = decision.approaches.map((a) => a.text)
+    if (!lengthsClose(approachTexts)) problems.push(`${at}: approach texts differ too much in length`)
+    const right = decision.approaches.findIndex((a) => a.ways.some((w) => w.grade === 'best'))
+    if (loneCue(approachTexts, right)) problems.push(`${at}: only the right approach uses a sounds-right word`)
+    decision.approaches.forEach((approach, a) => {
+      const texts = approach.ways.map((w) => w.text)
+      if (!lengthsClose(texts)) problems.push(`${at} approach ${a + 1}: way texts differ too much in length`)
+      if (loneCue(texts, approach.ways.findIndex((w) => w.grade === 'best'))) {
+        problems.push(`${at}: only the best way uses a sounds-right word`)
+      }
+      approach.ways.forEach((way, w) => {
+        if (texts.some((t, other) => other !== w && echoes(way.why, t))) {
+          problems.push(`${at} approach ${a + 1} way ${w + 1}: its why copies a sibling way's text`)
+        }
+      })
+    })
+  })
+  if (problems.length > 0) return problems
+
+  const wayKeys = wayKeysOf(draft)
+  const random = expectedScore(wayKeys, () => ALL_CHOICES)
+  for (const [name, rule] of Object.entries(HEURISTICS)) {
+    const got = expectedScore(wayKeys, (d) => heuristicChoices(draft, rule, d))
+    if (got > random + HEURISTIC_MARGIN) {
+      problems.push(`picking ${name} averages ${got}, more than ${HEURISTIC_MARGIN} above random (${random})`)
+    }
+  }
+  return problems
+}
+
+const ALL_CHOICES = Array.from({ length: CHOICES }, (_, i) => i)
+
+/** How random play scores across every path; see RANDOM_PLAY. */
 export function behaviourProblems(draft: ScenarioDraft): string[] {
   const problems: string[] = []
-  draft.scenes.forEach((scene, s) => {
-    const total = (kind: OptionKind) => sum(scene.options.find((o) => o.kind === kind)!.delta)
-    if (!(total('best') > total('ok') && total('ok') > total('trap'))) {
-      problems.push(`scene ${s + 1}: the best option must help more than the ok one, and the ok one more than the trap`)
-    }
-  })
-
-  const starts = draft.meters.map((m) => m.start)
-  const effects = toEffects(draft)
-  const pathOf = (kind: OptionKind) => draft.scenes.map((scene) => scene.options.findIndex((o) => o.kind === kind))
-  const expected: Record<OptionKind, Ending> = { best: 'good', ok: 'ok', trap: 'bad' }
-  for (const kind of ['best', 'ok', 'trap'] as const) {
-    const got = endingFor(playPath(starts, effects, pathOf(kind)))
-    if (got !== expected[kind]) problems.push(`picking every ${kind} option ends ${got}, not ${expected[kind]}`)
-  }
-  const counts = countEndings(starts, effects)
-  for (const ending of ['good', 'ok', 'bad'] as const) {
-    if (counts[ending] < MIN_PATHS_PER_ENDING) {
-      problems.push(`only ${counts[ending]} of 243 paths end ${ending}; needs at least ${MIN_PATHS_PER_ENDING}`)
-    }
+  const { guessAverage, endings } = analyse(wayKeysOf(draft))
+  const share = (e: Ending) => endings[e] / PATHS
+  const pct = (x: number) => `${Math.round(x * 1000) / 10}%`
+  if (share('bad') < RANDOM_PLAY.minBadShare) problems.push(`only ${pct(share('bad'))} of paths end bad; needs ${pct(RANDOM_PLAY.minBadShare)}`)
+  if (share('good') > RANDOM_PLAY.maxGoodShare) problems.push(`${pct(share('good'))} of paths end good; at most ${pct(RANDOM_PLAY.maxGoodShare)}`)
+  if (share('ok') < RANDOM_PLAY.minOkShare) problems.push(`only ${pct(share('ok'))} of paths end ok; needs ${pct(RANDOM_PLAY.minOkShare)}`)
+  if (guessAverage < RANDOM_PLAY.minAverage || guessAverage > RANDOM_PLAY.maxAverage) {
+    problems.push(`random picking averages ${guessAverage}; must be ${RANDOM_PLAY.minAverage} to ${RANDOM_PLAY.maxAverage}`)
   }
   return problems
 }
 
-/** Total meter change each kind of pick aims for, per decision, tried in this order. */
-const KIND_TOTALS: Record<OptionKind, number>[] = [
-  { best: 15, ok: 3, trap: -15 },
-  { best: 12, ok: 2, trap: -12 },
-  { best: 18, ok: 3, trap: -18 },
-  { best: 15, ok: 0, trap: -20 },
-]
-/** How much of the writer's own meter pattern to keep, tried from most to least. */
-const KEEP = [1, 0.8, 0.6, 0.4, 0.2, 0]
-const EVEN_STARTS = [50, 50, 50]
-
-/**
- * Tunes the numbers of a draft whose text and shape are sound so that it
- * passes `behaviourProblems`. A language model writes good options but
- * cannot add up 243 paths, so its numbers are a first guess.
- *
- * Each option keeps the writer's pattern (which meters it raises or lowers)
- * as far as possible, rescaled so its total matches what its kind should
- * do, then blended toward an even split across the meters. The search keeps
- * as much of the writer's pattern as it can and returns the first candidate
- * that passes. With nothing kept, even starts and the first totals, every
- * rule holds (a test proves it), so for a draft with no shape problems this
- * always returns a playable draft. Returns the draft unchanged if its own
- * numbers already pass, and null if it has shape problems.
- */
-export function calibrateDraft(draft: ScenarioDraft): ScenarioDraft | null {
-  if (shapeProblems(draft).length > 0) return null
-  if (behaviourProblems(draft).length === 0) return draft
-  const ownStarts = draft.meters.map((m) => m.start)
-  for (const keep of KEEP) {
-    for (const starts of [ownStarts, EVEN_STARTS]) {
-      for (const totals of KIND_TOTALS) {
-        const candidate: ScenarioDraft = {
-          ...draft,
-          meters: draft.meters.map((m, i) => ({ ...m, start: starts[i] })),
-          scenes: draft.scenes.map((scene) => ({
-            ...scene,
-            options: scene.options.map((o) => ({ ...o, delta: tunedDelta(o.delta, totals[o.kind], keep) })),
-          })),
-        }
-        if (behaviourProblems(candidate).length === 0) return candidate
-      }
-    }
-  }
-  return null
-}
-
-/**
- * One option's meter changes, aimed at `target` in total. The writer's
- * pattern is scaled when its total points the same way and the scale stays
- * between 0.5 and 5; otherwise it is shifted evenly. `keep` blends the result
- * with an even split (1 = all pattern, 0 = all even).
- */
-function tunedDelta(delta: number[], target: number, keep: number): number[] {
-  const own = sum(delta)
-  const factor = own !== 0 ? target / own : 0
-  const pattern =
-    factor >= 0.5 && factor <= 5 ? delta.map((d) => d * factor) : delta.map((d) => d + (target - own) / delta.length)
-  const even = target / delta.length
-  return pattern.map((p) => {
-    const value = Math.round(keep * p + (1 - keep) * even)
-    return Math.max(-DELTA_LIMIT, Math.min(DELTA_LIMIT, value))
-  })
-}
-
-function toEffects(draft: ScenarioDraft): Effect[][] {
-  return draft.scenes.map((scene) =>
-    scene.options.map((o) => ({ delta: o.delta, outcome: o.outcome, kind: o.kind, why: o.why })),
-  )
-}
-
-/** Separates a draft into its readable half and its hidden half. */
+/** Separates a checked draft into its readable half and its hidden half. */
 export function splitDraft(draft: ScenarioDraft): {
   scenario: PublicScenario
   answers: Omit<ScenarioAnswers, 'scenarioId'>
 } {
+  const wayKeys = wayKeysOf(draft)
   return {
     scenario: {
       title: draft.title,
       situation: draft.situation,
       setting: draft.setting,
-      meters: draft.meters.map((m) => ({ name: m.name, start: m.start })),
-      scenes: draft.scenes.map((scene) => ({ prompt: scene.prompt, options: scene.options.map((o) => o.text) })),
+      decisions: draft.decisions.map((decision) => ({
+        prompt: decision.prompt,
+        approaches: decision.approaches.map((a) => ({ text: a.text, ways: a.ways.map((w) => w.text) })),
+      })),
+      guessAverage: analyse(wayKeys).guessAverage,
     },
-    answers: { effects: toEffects(draft), endings: { ...draft.endings } },
+    answers: {
+      format: FORMAT,
+      wayKeys,
+      flags: draft.flags.map((f) => ({ id: f.id, label: f.label })),
+      endings: { ...draft.endings },
+    },
   }
 }
 
 /**
- * Fixes what is safe to fix in AI output before it is checked: rounds and
- * clamps the meter changes and starts, and trims every text. It never invents
- * missing parts; those still fail `checkScenario`.
+ * Trims every text in generated output before it is checked. It never
+ * invents missing parts or changes a grade; those still fail `checkScenario`.
  */
 export function repairDraft(draft: ScenarioDraft): ScenarioDraft {
   const trim = (v: unknown) => (typeof v === 'string' ? v.trim() : v) as string
-  const round = (v: unknown, lo: number, hi: number) =>
-    typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : (v as number)
   return {
     ...draft,
     title: trim(draft.title),
     situation: trim(draft.situation),
     setting: trim(draft.setting),
-    meters: (draft.meters ?? []).map((m) => ({ name: trim(m?.name), start: round(m?.start, START_MIN, START_MAX) })),
-    scenes: (draft.scenes ?? []).map((scene) => ({
-      prompt: trim(scene?.prompt),
-      options: (scene?.options ?? []).map((o) => ({
-        text: trim(o?.text),
-        kind: o?.kind,
-        delta: (o?.delta ?? []).map((d) => round(d, -DELTA_LIMIT, DELTA_LIMIT)),
-        outcome: trim(o?.outcome),
-        why: trim(o?.why),
+    flags: (draft.flags ?? []).map((f) => ({ id: trim(f?.id), label: trim(f?.label) })),
+    decisions: (draft.decisions ?? []).map((decision) => ({
+      prompt: trim(decision?.prompt),
+      approaches: (decision?.approaches ?? []).map((approach) => ({
+        text: trim(approach?.text),
+        ways: (approach?.ways ?? []).map((w) => {
+          const way: DraftWay = { text: trim(w?.text), grade: w?.grade, outcome: trim(w?.outcome), why: trim(w?.why) }
+          if (w?.raises !== undefined) way.raises = Array.isArray(w.raises) ? w.raises.map(trim) : w.raises
+          if (w?.ifRaised !== undefined) {
+            way.ifRaised = w.ifRaised && {
+              flag: trim(w.ifRaised.flag),
+              grade: w.ifRaised.grade,
+              outcome: trim(w.ifRaised.outcome),
+              why: trim(w.ifRaised.why),
+            }
+          }
+          return way
+        }),
       })),
     })),
     endings: {
@@ -333,20 +599,47 @@ export function repairDraft(draft: ScenarioDraft): ScenarioDraft {
   }
 }
 
+function shuffled<T>(items: T[], random: () => number): T[] {
+  const out = [...items]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
+
 /**
- * Shuffles the options inside each scene so the best pick is not always in
- * the same place. `random` returns a number in [0, 1); tests pass a fixed one.
+ * Shuffles the approaches inside each decision and the ways inside each
+ * approach, so the right option is not always in the same place. Flags are
+ * named by id, not position, so they survive the shuffle. `random` returns a
+ * number in [0, 1).
  */
-export function shuffleOptions(draft: ScenarioDraft, random: () => number = Math.random): ScenarioDraft {
+export function shuffleDraft(draft: ScenarioDraft, random: () => number = Math.random): ScenarioDraft {
   return {
     ...draft,
-    scenes: draft.scenes.map((scene) => {
-      const options = [...scene.options]
-      for (let i = options.length - 1; i > 0; i--) {
-        const j = Math.floor(random() * (i + 1))
-        ;[options[i], options[j]] = [options[j], options[i]]
-      }
-      return { ...scene, options }
-    }),
+    decisions: draft.decisions.map((decision) => ({
+      ...decision,
+      approaches: shuffled(decision.approaches, random).map((a) => ({ ...a, ways: shuffled(a.ways, random) })),
+    })),
+  }
+}
+
+/**
+ * A repeatable random number source from a string, so a starter shuffles the
+ * same way on every worker (mulberry32 seeded with an FNV-1a hash).
+ */
+export function seededRandom(seed: string): () => number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  let a = h >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }

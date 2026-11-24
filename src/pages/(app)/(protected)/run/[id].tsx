@@ -2,18 +2,20 @@
  * /run/:id: play a run, then read the debrief and rewind.
  *
  * The run comes live from the `runs` collection (players can read only their
- * own). Picks and rewinds go through actions; when a pick lands, the server
- * updates the run row and this page re-renders from it.
+ * own). Each decision is two steps: commit to an approach (no switching
+ * after), then pick one of its ways and lock it in. The commit, the lock-in
+ * and rewinds all go through actions; when one lands, the server updates the
+ * run row and this page re-renders from it, so a reload shows the same
+ * committed approach. The score stays hidden until the last decision.
  */
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from 'deepspace'
 import { Badge, Button, cn, useToast } from '@/components/ui'
-import { turningPoint } from '../../../../features/play/engine'
-import { ENDING_BADGE, ENDING_LABEL, KIND_BADGE, KIND_LABEL } from '../../../../features/play/labels'
-import { MeterBars } from '../../../../features/play/MeterBars'
+import type { Explained } from '../../../../actions/play'
+import { choiceText, ENDING_BADGE, ENDING_LABEL, GRADE_BADGE, gradeLine, scoreSum } from '../../../../features/play/labels'
 import { runAction } from '../../../../features/play/runAction'
-import { SCENES, type RunRow } from '../../../../features/play/types'
+import { committedApproach, DECISIONS, FORMAT, WAYS, type PublicDecision, type RunRow } from '../../../../features/play/types'
 
 export default function RunPage() {
   const { id = '' } = useParams()
@@ -28,52 +30,44 @@ export default function RunPage() {
     return (
       <Centered>
         {status === 'loading' ? 'Loading run…' : 'This run does not exist or belongs to someone else.'}
-        <Link to="/home" className="mt-4 block text-sm underline">
-          Back to scenarios
-        </Link>
+        <BackLink />
+      </Centered>
+    )
+  }
+  if (run.format !== FORMAT) {
+    return (
+      <Centered>
+        This run is from an older version of sequents. Start the scenario again from the list.
+        <BackLink />
       </Centered>
     )
   }
 
-  const { snapshot, choices, meterHistory, outcomes, scenarioId } = run
-  const scene = choices.length
-  const current = meterHistory[meterHistory.length - 1]
-  const before = meterHistory.length > 1 ? meterHistory[meterHistory.length - 2] : undefined
-  const blocked = run.branchAt === scene && parent ? parent.choices[scene] : -1
+  const { snapshot, choices, outcomes, scenarioId } = run
+  const decision = choices.length
+  const blocked = run.branchAt === decision && parent ? parent.choices[decision] : -1
 
-  async function choose(option: number) {
+  async function act<T>(label: string, work: () => Promise<T>) {
     setPending(true)
     try {
-      await runAction('choose', { runId: id, scene, option })
+      return await work()
     } catch (e) {
-      toast.error('That pick did not go through', (e as Error).message)
+      toast.error(label, (e as Error).message)
+      return undefined
     } finally {
       setPending(false)
     }
   }
 
-  async function rewind(decision: number) {
-    setPending(true)
-    try {
-      const res = await runAction<{ runId: string }>('rewind', { runId: id, decision })
-      navigate(`/run/${res.runId}`)
-    } catch (e) {
-      toast.error('Could not rewind', (e as Error).message)
-    } finally {
-      setPending(false)
-    }
+  const commit = (approach: number) => act('Could not choose that approach', () => runAction('commit', { runId: id, decision, approach }))
+  const lockIn = (choice: number) => act('That choice did not go through', () => runAction('choose', { runId: id, decision, choice }))
+  const rewind = async (to: number) => {
+    const res = await act('Could not rewind', () => runAction<{ runId: string }>('rewind', { runId: id, decision: to }))
+    if (res) navigate(`/run/${res.runId}`)
   }
-
-  async function restart() {
-    setPending(true)
-    try {
-      const res = await runAction<{ runId: string }>('startRun', { scenarioId })
-      navigate(`/run/${res.runId}`)
-    } catch (e) {
-      toast.error('Could not start again', (e as Error).message)
-    } finally {
-      setPending(false)
-    }
+  const restart = async () => {
+    const res = await act('Could not start again', () => runAction<{ runId: string }>('startRun', { scenarioId }))
+    if (res) navigate(`/run/${res.runId}`)
   }
 
   return (
@@ -84,14 +78,10 @@ export default function RunPage() {
       <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground">{snapshot.title}</h1>
       {run.branchAt >= 0 && (
         <p className="mt-1 text-sm text-muted-foreground">
-          Rewound to decision {run.branchAt + 1}. Your earlier picks are kept up to there.
+          Rewound to decision {run.branchAt + 1}. Your earlier choices are kept up to there.
         </p>
       )}
       <p className="mt-4 text-foreground/90">{snapshot.setting}</p>
-
-      <div className="sticky top-0 z-10 -mx-6 mt-6 border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
-        <MeterBars meters={snapshot.meters} values={current} previous={run.status === 'playing' ? before : undefined} />
-      </div>
 
       {run.status === 'playing' ? (
         <>
@@ -100,37 +90,107 @@ export default function RunPage() {
               {outcomes.map((outcome, i) => (
                 <li key={i} className={cn('rounded-lg border border-border p-4', i === outcomes.length - 1 && 'bg-accent/40')}>
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decision {i + 1}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">You: {snapshot.scenes[i].options[choices[i]]}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">You: {choiceText(snapshot.decisions[i], choices[i])}</p>
                   <p className="mt-2 text-foreground">{outcome}</p>
                 </li>
               ))}
             </ol>
           )}
-          <section className="mt-8" data-testid="decision">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-              Decision {scene + 1} of {SCENES}
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">{snapshot.scenes[scene].prompt}</h2>
-            <div className="mt-4 grid gap-3">
-              {snapshot.scenes[scene].options.map((text, option) => (
-                <button
-                  key={option}
-                  type="button"
-                  disabled={pending || option === blocked}
-                  onClick={() => choose(option)}
-                  className="rounded-lg border border-border bg-card px-4 py-3 text-left text-foreground transition-colors hover:border-primary hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {text}
-                  {option === blocked && <span className="mt-1 block text-xs text-muted-foreground">Your earlier pick</span>}
-                </button>
-              ))}
-            </div>
-          </section>
+          <DecisionCard
+            key={`${id}-${decision}`}
+            index={decision}
+            decision={snapshot.decisions[decision]}
+            blocked={blocked}
+            committed={committedApproach(run)}
+            pending={pending}
+            onCommit={commit}
+            onLockIn={lockIn}
+          />
         </>
       ) : (
-        <Debrief run={run} pending={pending} onRewind={rewind} onRestart={restart} runId={id} />
+        <Debrief run={run} runId={id} pending={pending} onRewind={rewind} onRestart={restart} />
       )}
     </div>
+  )
+}
+
+/**
+ * One decision: pick an approach (a commitment the server stores on the run:
+ * the other approaches' ways are never shown), then a way inside it, then
+ * Lock in. `committed` is the approach stored on the run, -1 before one is
+ * chosen. `blocked` is the choice this rewound run may not repeat; -1 when
+ * none.
+ */
+function DecisionCard({
+  index,
+  decision,
+  blocked,
+  committed,
+  pending,
+  onCommit,
+  onLockIn,
+}: {
+  index: number
+  decision: PublicDecision
+  blocked: number
+  committed: number
+  pending: boolean
+  onCommit: (approach: number) => void
+  onLockIn: (choice: number) => void
+}) {
+  const approach = committed >= 0 && committed < decision.approaches.length ? committed : null
+  const [way, setWay] = useState<number | null>(null)
+  const option =
+    'rounded-lg border bg-card px-4 py-3 text-left text-foreground transition-colors hover:border-primary hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50'
+
+  return (
+    <section className="mt-8" data-testid="decision">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+        Decision {index + 1} of {DECISIONS}
+      </p>
+      <h2 className="mt-1 text-lg font-semibold text-foreground">{decision.prompt}</h2>
+
+      {approach === null ? (
+        <>
+          <p className="mt-4 text-sm text-muted-foreground">First, what do you do? You cannot switch once you choose.</p>
+          <div className="mt-2 grid gap-3" data-testid="approaches">
+            {decision.approaches.map((a, i) => (
+              <button key={i} type="button" disabled={pending} onClick={() => onCommit(i)} className={cn(option, 'border-border')}>
+                {a.text}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="mt-4 text-sm text-muted-foreground">
+            You chose: <span className="font-medium text-foreground">{decision.approaches[approach].text}</span>. Now, exactly how?
+          </p>
+          <div className="mt-2 grid gap-3" role="radiogroup" data-testid="ways">
+            {decision.approaches[approach].ways.map((text, w) => {
+              const isBlocked = approach * WAYS + w === blocked
+              return (
+                <button
+                  key={w}
+                  type="button"
+                  role="radio"
+                  aria-checked={way === w}
+                  disabled={pending || isBlocked}
+                  onClick={() => setWay(w)}
+                  className={cn(option, way === w ? 'border-primary ring-2 ring-primary/40' : 'border-border')}
+                >
+                  {text}
+                  {isBlocked && <span className="mt-1 block text-xs text-muted-foreground">Your earlier choice</span>}
+                </button>
+              )
+            })}
+          </div>
+          <Button className="mt-4" disabled={way === null} loading={pending} onClick={() => way !== null && onLockIn(approach * WAYS + way)}>
+            Lock in
+          </Button>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -147,15 +207,67 @@ function Debrief({
   onRewind: (decision: number) => void
   onRestart: () => void
 }) {
-  const ending = run.ending || 'ok'
-  const turn = turningPoint(run.meterHistory)
+  const ending = run.ending || 'bad'
+  const [explained, setExplained] = useState<Explained[] | null>(null)
+  const [explainError, setExplainError] = useState('')
+
+  // Reasons come from the server, which unlocks a lost decision's reason only
+  // after the player has tried two different choices there.
+  useEffect(() => {
+    let live = true
+    runAction<{ decisions: Explained[] }>('explain', { runId })
+      .then((res) => live && setExplained(res.decisions))
+      .catch((e: Error) => live && setExplainError(e.message))
+    return () => {
+      live = false
+    }
+  }, [runId])
+
+  // This player's finished runs on the same answers: first try and best so far.
+  const { records: mine } = useQuery<RunRow>('runs', { where: { answersId: run.answersId, status: 'done' }, limit: 200 })
+  const history = useMemo(() => {
+    const sorted = [...mine].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    return sorted.length ? { first: sorted[0].data.score, best: Math.max(...sorted.map((r) => r.data.score)) } : null
+  }, [mine])
+
+  const lost = run.steps.reduce((sum, s) => sum + s.points, 0)
   return (
     <section className="mt-8" data-testid="debrief">
       <div className="rounded-lg border border-border bg-card p-5">
-        <Badge variant={ENDING_BADGE[ending]} size="lg">
+        <p className="text-4xl font-bold tracking-tight text-foreground" data-testid="score">
+          {run.score}
+          <span className="text-lg font-medium text-muted-foreground"> / 100</span>
+        </p>
+        <p className="mt-1 font-mono text-sm text-muted-foreground" data-testid="score-sum">
+          {scoreSum(
+            run.steps.map((s) => s.points),
+            run.score,
+          )}
+        </p>
+        <Badge className="mt-3" variant={ENDING_BADGE[ending]} size="lg">
           {ENDING_LABEL[ending]}
         </Badge>
         <p className="mt-3 text-foreground">{run.endingText}</p>
+        <ul className="mt-4 space-y-1 text-sm text-muted-foreground">
+          {history && (
+            <li>
+              Your first try: {history.first}. Best so far: {history.best}.
+            </li>
+          )}
+          <li>This beats {run.beats}% of all possible paths.</li>
+          <li>Random picking averages about {run.snapshot.guessAverage} here.</li>
+        </ul>
+        {run.fix.decision >= 0 && (
+          <div className="mt-4 rounded-md border border-primary/40 bg-accent/30 p-3 text-sm">
+            <p className="text-foreground">
+              Your biggest single fix is decision {run.fix.decision + 1}: changing it alone could win back up to {run.fix.gain} of the {lost}{' '}
+              points you lost.
+            </p>
+            <Button className="mt-2" size="sm" disabled={pending} onClick={() => onRewind(run.fix.decision)}>
+              Retry your biggest loss
+            </Button>
+          </div>
+        )}
         {run.branchAt >= 0 && (
           <Link to={`/compare/${runId}`} className="mt-4 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline">
             Compare with the run you rewound →
@@ -163,44 +275,66 @@ function Debrief({
         )}
       </div>
 
-      <h2 className="mt-8 text-lg font-semibold text-foreground">How each pick played out</h2>
-      <p className="text-sm text-muted-foreground">Rewind any decision to try another option from there.</p>
-      <ol className="mt-4 space-y-4">
-        {run.debrief.map((item, i) => (
-          <li key={i} className={cn('rounded-lg border p-4', i === turn ? 'border-primary' : 'border-border')}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decision {i + 1}</span>
-              <Badge variant={KIND_BADGE[item.kind]} size="sm">
-                {KIND_LABEL[item.kind]}
-              </Badge>
-              {i === turn && (
-                <Badge variant="info" size="sm">
-                  Turning point: rewind here
+      <h2 className="mt-8 text-lg font-semibold text-foreground">Every point you lost</h2>
+      <p className="text-sm text-muted-foreground">
+        The reason behind a lost point unlocks once you have tried two different choices at that decision. Rewind any decision to try
+        another.
+      </p>
+      {explainError && <p className="mt-2 text-sm text-destructive">Reasons could not load: {explainError}</p>}
+      <ol className="mt-4 space-y-4" data-testid="demerits">
+        {run.steps.map((step, i) => {
+          const why = explained?.[i]
+          return (
+            <li key={i} className={cn('rounded-lg border p-4', i === run.fix.decision ? 'border-primary' : 'border-border')}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decision {i + 1}</span>
+                <Badge variant={GRADE_BADGE[step.grade]} size="sm">
+                  {gradeLine(step.grade)}
                 </Badge>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">{run.snapshot.decisions[i].prompt}</p>
+              <p className="mt-1 font-medium text-foreground">You: {choiceText(run.snapshot.decisions[i], run.choices[i])}</p>
+              <p className="mt-2 text-sm text-foreground/90">{run.outcomes[i]}</p>
+              {step.causedBy >= 0 && (
+                <p className="mt-2 text-sm text-warning-foreground" data-testid="caused-by">
+                  This would have been a {gradeLine(step.base).toLowerCase()}, but your choice at decision {step.causedBy + 1} made it
+                  worse{why?.flag ? `: ${why.flag}` : ''}.
+                </p>
               )}
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">{run.snapshot.scenes[i].prompt}</p>
-            <p className="mt-1 font-medium text-foreground">You: {run.snapshot.scenes[i].options[run.choices[i]]}</p>
-            <p className="mt-2 text-sm text-foreground/90">{run.outcomes[i]}</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Why: </span>
-              {item.why}
-            </p>
-            <Button className="mt-3" size="sm" variant={i === turn ? 'default' : 'outline'} disabled={pending} onClick={() => onRewind(i)}>
-              Rewind to decision {i + 1}
-            </Button>
-          </li>
-        ))}
+              <p className="mt-2 text-sm text-muted-foreground" data-testid="why">
+                {!why ? (
+                  'Loading the reason…'
+                ) : why.unlocked ? (
+                  <>
+                    <span className="font-medium text-foreground">Why: </span>
+                    {why.why}
+                  </>
+                ) : (
+                  `Reason locked: try a different choice here to unlock it (${why.tried} of 2 tried).`
+                )}
+              </p>
+              <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => onRewind(i)}>
+                Rewind to decision {i + 1}
+              </Button>
+            </li>
+          )
+        })}
       </ol>
       <div className="mt-8 flex gap-3">
         <Button variant="outline" disabled={pending} onClick={onRestart}>
           Play again from the start
         </Button>
-        <Link to="/home" className="inline-flex items-center px-3 text-sm text-muted-foreground hover:text-foreground">
-          Back to scenarios
-        </Link>
+        <BackLink />
       </div>
     </section>
+  )
+}
+
+function BackLink() {
+  return (
+    <Link to="/home" className="mt-4 inline-flex items-center px-3 text-sm text-muted-foreground hover:text-foreground">
+      Back to scenarios
+    </Link>
   )
 }
 

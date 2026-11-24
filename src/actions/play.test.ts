@@ -2,84 +2,104 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { STARTERS } from '../seeds/starters'
-import type { RunRow } from '../features/play/types'
+import { fromChoice } from '../features/play/engine'
+import { choicesOf, findChoice, fixture } from '../features/play/fixture'
+import { FORMAT, type RunRow, type ScenarioAnswers } from '../features/play/types'
 import { fakeTools } from './fake-tools'
-import { playActions, resetSeedCache, RUNS_PER_DAY, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
+import { type Explained, playActions, resetSeedCache, RUNS_PER_DAY, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
 
 const OWNER = 'user_owner'
 const env = { OWNER_USER_ID: OWNER } as Env
+type Store = ReturnType<typeof fakeTools>['store']
 
 beforeEach(() => resetSeedCache())
 
 /** Calls an action as `userId` against a shared in-memory store. */
-function caller(store: ReturnType<typeof fakeTools>['store']) {
+function caller(store: Store) {
   return async <T = Record<string, unknown>>(name: string, userId: string, params: Record<string, unknown> = {}) => {
     const { tools } = fakeTools(userId, store)
-    const res = (await playActions[name]({ userId, params, tools, env, callerJwt: 'jwt' })) as ActionResult<T>
-    return res
+    return (await playActions[name]({ userId, params, tools, env, callerJwt: 'jwt' })) as ActionResult<T>
+  }
+}
+type Call = ReturnType<typeof caller>
+
+const SCENARIO = 'fixture'
+const answersId = starterAnswersId(SCENARIO, SEED_VERSION)
+
+/** A store holding the test scenario, seeded the way starters are (shuffled), and its stored answers. */
+async function seeded() {
+  const { store, tools } = fakeTools(OWNER)
+  expect(await seedStarterRows(tools, SEED_VERSION, [fixture(SCENARIO)])).toEqual({ success: true, data: { written: 1 } })
+  const answers = store.get('scenario_answers')!.get(answersId)!.data as unknown as ScenarioAnswers
+  return { store, call: caller(store), keys: answers.wayKeys }
+}
+
+const runOf = (store: Store, id: string) => store.get('runs')!.get(id)!.data as unknown as RunRow
+
+async function start(call: Call, userId = 'user_a') {
+  const res = await call<{ runId: string }>('startRun', userId, { scenarioId: SCENARIO })
+  expect(res.success).toBe(true)
+  return res.data!.runId
+}
+
+/** Commits to the approach `choice` belongs to at `decision`, then locks `choice` in; returns the lock-in result. */
+async function lockIn<T = Record<string, unknown>>(call: Call, runId: string, decision: number, choice: number, userId = 'user_a') {
+  expect((await call('commit', userId, { runId, decision, approach: fromChoice(choice).approach })).success).toBe(true)
+  return call<T>('choose', userId, { runId, decision, choice })
+}
+
+/** Locks in `choices` from decision `from` on. */
+async function play(call: Call, runId: string, choices: number[], from = 0, userId = 'user_a') {
+  for (let i = 0; i < choices.length; i++) {
+    const res = await lockIn(call, runId, from + i, choices[i], userId)
+    expect(res.success).toBe(true)
   }
 }
 
-async function seeded() {
-  const { store } = fakeTools(OWNER)
-  const call = caller(store)
-  const res = await call<{ written: number }>('seedStarters', 'user_a')
-  expect(res).toEqual({ success: true, data: { written: 6 } })
-  return { store, call }
-}
-
-const starter = STARTERS[0]
-const pathOf = (kind: string) => starter.scenes.map((s) => s.options.findIndex((o) => o.kind === kind))
-
 describe('seedStarters', () => {
-  it('works for any signed-in user, not only the owner', async () => {
+  it('writes every starter for any signed-in user, owned by nobody and public', async () => {
     const { store } = fakeTools('user_a')
     const res = await caller(store)('seedStarters', 'user_a')
-    expect(res).toEqual({ success: true, data: { written: 6 } })
-    const row = store.get('scenarios')!.get(starter.id!)!.data
-    expect(row.authorId).toBe('')
+    expect(res).toEqual({ success: true, data: { written: STARTERS.length } })
+    const row = store.get('scenarios')!.get(STARTERS[0].id!)!.data
+    expect(row).toMatchObject({ authorId: '', visibility: 'public', format: FORMAT, starter: true })
   })
 
-  it('writes each starter once, then skips until the seed version changes', async () => {
-    const { store, call } = await seeded()
-    expect(store.get('scenarios')!.size).toBe(6)
-    expect(store.get('scenario_answers')!.size).toBe(6)
-    const { tools } = fakeTools('user_b', store)
-    expect(await seedStarterRows(tools, SEED_VERSION, STARTERS)).toEqual({ success: true, data: { written: 0 } })
-    const row = store.get('scenarios')!.get(starter.id!)!.data
-    expect(row.visibility).toBe('public')
-    expect(row.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION))
-    expect(JSON.stringify(row)).not.toContain(starter.scenes[0].options[0].why)
-  })
-
-  it('writes a starter again when its answers row is missing', async () => {
-    const { store, call } = await seeded()
-    store.get('scenario_answers')!.delete(starterAnswersId(starter.id!, SEED_VERSION))
-    resetSeedCache()
-    expect(await call('seedStarters', 'user_a')).toEqual({ success: true, data: { written: 1 } })
-    expect(store.get('scenario_answers')!.has(starterAnswersId(starter.id!, SEED_VERSION))).toBe(true)
-  })
-
-  it('writes a starter again when it points at other answers at the same version', async () => {
+  it('stores the readable half without grades, reasons or flags', async () => {
     const { store } = await seeded()
-    store.get('scenarios')!.get(starter.id!)!.data.answersId = 'someone_elses_answers'
-    const { tools } = fakeTools('user_a', store)
-    expect(await seedStarterRows(tools, SEED_VERSION, STARTERS)).toEqual({ success: true, data: { written: 1 } })
-    expect(store.get('scenarios')!.get(starter.id!)!.data.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION))
+    const text = JSON.stringify(store.get('scenarios')!.get(SCENARIO)!.data)
+    expect(text).not.toMatch(/"(grade|why|raises|ifRaised|wayKeys)"\s*:/)
+    expect(text).not.toContain('Reason 000.')
+  })
+
+  it('shuffles the same way on every worker, so answers and text always match', async () => {
+    const a = await seeded()
+    const b = await seeded()
+    expect(a.store.get('scenarios')!.get(SCENARIO)!.data.decisions).toEqual(b.store.get('scenarios')!.get(SCENARIO)!.data.decisions)
+    expect(a.keys).toEqual(b.keys)
+  })
+
+  it('skips a starter at this version, and writes it again when its answers are missing or elsewhere', async () => {
+    const { store } = await seeded()
+    const { tools } = fakeTools('user_b', store)
+    expect(await seedStarterRows(tools, SEED_VERSION, [fixture(SCENARIO)])).toEqual({ success: true, data: { written: 0 } })
+    store.get('scenario_answers')!.delete(answersId)
+    expect(await seedStarterRows(tools, SEED_VERSION, [fixture(SCENARIO)])).toEqual({ success: true, data: { written: 1 } })
+    store.get('scenarios')!.get(SCENARIO)!.data.answersId = 'someone_elses_answers'
+    expect(await seedStarterRows(tools, SEED_VERSION, [fixture(SCENARIO)])).toEqual({ success: true, data: { written: 1 } })
+    expect(store.get('scenarios')!.get(SCENARIO)!.data.answersId).toBe(answersId)
   })
 
   it('never writes an older version over a newer one', async () => {
-    const { store } = fakeTools('user_a')
-    const { tools } = fakeTools('user_a', store)
-    await seedStarterRows(tools, SEED_VERSION + 1, STARTERS)
-    expect(await seedStarterRows(tools, SEED_VERSION, STARTERS)).toEqual({ success: true, data: { written: 0 } })
-    const row = store.get('scenarios')!.get(starter.id!)!.data
-    expect(row.seedVersion).toBe(SEED_VERSION + 1)
-    expect(row.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION + 1))
+    const { tools, store } = fakeTools('user_a')
+    await seedStarterRows(tools, SEED_VERSION + 1, [fixture(SCENARIO)])
+    expect(await seedStarterRows(tools, SEED_VERSION, [fixture(SCENARIO)])).toEqual({ success: true, data: { written: 0 } })
+    expect(store.get('scenarios')!.get(SCENARIO)!.data.seedVersion).toBe(SEED_VERSION + 1)
   })
 
   it('after one success in this worker instance, later calls read nothing', async () => {
-    const { store } = await seeded()
+    const { store } = fakeTools('user_a')
+    await caller(store)('seedStarters', 'user_a')
     const { tools } = fakeTools('user_b', store)
     let reads = 0
     const counting = { ...tools, get: async (...a: Parameters<ActionTools['get']>) => (reads++, tools.get(...a)) }
@@ -88,73 +108,267 @@ describe('seedStarters', () => {
     expect(reads).toBe(0)
   })
 
-  it('on a new version makes every starter public and keeps old runs on their old answers', async () => {
-    const { store, call } = await seeded()
-    const runId = (await call<{ runId: string }>('startRun', 'user_a', { scenarioId: starter.id })).data!.runId
-    store.get('scenarios')!.get(STARTERS[1].id!)!.data.visibility = 'private'
+  it('on a new version keeps runs already started on their old answers', async () => {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    const changed = fixture(SCENARIO)
+    changed.endings.good = 'A different good ending.'
+    await seedStarterRows(fakeTools('user_b', store).tools, SEED_VERSION + 1, [changed])
+    expect(store.get('scenarios')!.get(SCENARIO)!.data.answersId).toBe(starterAnswersId(SCENARIO, SEED_VERSION + 1))
 
-    // The next version changes the first starter's good ending.
-    const changed = structuredClone(STARTERS)
-    changed[0].endings.good = 'A different good ending.'
-    const { tools } = fakeTools('user_b', store)
-    expect(await seedStarterRows(tools, SEED_VERSION + 1, changed)).toEqual({ success: true, data: { written: 6 } })
-
-    expect(store.get('scenarios')!.get(STARTERS[1].id!)!.data.visibility).toBe('public')
-    expect(store.get('scenarios')!.get(starter.id!)!.data.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION + 1))
-    expect(store.get('scenario_answers')!.size).toBe(12)
-
-    const best = pathOf('best')
-    for (let scene = 0; scene < 5; scene++) await call('choose', 'user_a', { runId, scene, option: best[scene] })
-    const old = store.get('runs')!.get(runId)!.data as unknown as RunRow
-    expect(old.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION))
-    expect(old.endingText).toBe(starter.endings.good)
-
-    const fresh = (await call<{ runId: string }>('startRun', 'user_a', { scenarioId: starter.id })).data!.runId
-    for (let scene = 0; scene < 5; scene++) await call('choose', 'user_a', { runId: fresh, scene, option: best[scene] })
-    expect((store.get('runs')!.get(fresh)!.data as unknown as RunRow).endingText).toBe('A different good ending.')
+    await play(call, runId, choicesOf(keys, 'best'))
+    expect(runOf(store, runId)).toMatchObject({ answersId, endingText: 'Good.', score: 100 })
   })
 })
 
 describe('startRun', () => {
-  it('refuses a scenario whose answers row is missing', async () => {
+  it('starts an empty graded run with a snapshot of the readable half', async () => {
     const { store, call } = await seeded()
-    store.get('scenario_answers')!.delete(starterAnswersId(starter.id!, SEED_VERSION))
-    expect((await call('startRun', 'user_a', { scenarioId: starter.id })).error).toBe('That scenario is not available.')
+    const run = runOf(store, await start(call))
+    expect(run).toMatchObject({ format: FORMAT, status: 'playing', choices: [], score: 0, branchAt: -1, approach: -1, answersId })
+    expect(run.snapshot.decisions).toHaveLength(4)
+    expect(run.snapshot.decisions[0].approaches[0].ways).toHaveLength(3)
+    expect(run.snapshot.guessAverage).toBeGreaterThan(0)
+  })
+
+  it('refuses a scenario whose answers are missing', async () => {
+    const { store, call } = await seeded()
+    store.get('scenario_answers')!.delete(answersId)
+    expect((await call('startRun', 'user_a', { scenarioId: SCENARIO })).error).toBe('That scenario is not available.')
+  })
+
+  it('refuses a scenario row from the first version', async () => {
+    const { store, call } = await seeded()
+    delete store.get('scenarios')!.get(SCENARIO)!.data.format
+    expect((await call('startRun', 'user_a', { scenarioId: SCENARIO })).error).toBe('That scenario is not available.')
+  })
+
+  it('refuses a signed-out or anonymous caller', async () => {
+    const { call } = await seeded()
+    for (const userId of ['', 'anon-123']) expect((await call('startRun', userId, { scenarioId: SCENARIO })).error).toBe('Sign in to play.')
+  })
+})
+
+describe('commit', () => {
+  it('stores the approach on the run, so a reload shows it, and allows the same one again', async () => {
+    const { store, call } = await seeded()
+    const runId = await start(call)
+    expect(await call('commit', 'user_a', { runId, decision: 0, approach: 2 })).toEqual({ success: true, data: { approach: 2 } })
+    expect(runOf(store, runId).approach).toBe(2)
+    expect((await call('commit', 'user_a', { runId, decision: 0, approach: 2 })).success).toBe(true)
+  })
+
+  it('refuses a different approach once one is chosen, and a way from another approach', async () => {
+    const { store, call } = await seeded()
+    const runId = await start(call)
+    expect((await call('choose', 'user_a', { runId, decision: 0, choice: 0 })).error).toBe('Choose an approach first.')
+    await call('commit', 'user_a', { runId, decision: 0, approach: 1 })
+    expect((await call('commit', 'user_a', { runId, decision: 0, approach: 0 })).error).toBe('You already chose an approach for this decision.')
+    for (const choice of [0, 2, 6, 8]) {
+      expect((await call('choose', 'user_a', { runId, decision: 0, choice })).error).toContain('different approach')
+    }
+    expect(runOf(store, runId).choices).toEqual([])
+    expect((await call('choose', 'user_a', { runId, decision: 0, choice: 4 })).success).toBe(true)
+  })
+
+  it('clears the approach on lock-in, so the next decision needs its own', async () => {
+    const { store, call } = await seeded()
+    const runId = await start(call)
+    await lockIn(call, runId, 0, 5)
+    expect(runOf(store, runId).approach).toBe(-1)
+    expect((await call('choose', 'user_a', { runId, decision: 1, choice: 0 })).error).toBe('Choose an approach first.')
+    expect((await call('commit', 'user_a', { runId, decision: 1, approach: 0 })).success).toBe(true)
+  })
+
+  it('ignores a commit stored for an earlier decision, so a late commit cannot bind the next one', async () => {
+    const { store, call } = await seeded()
+    const runId = await start(call)
+    await lockIn(call, runId, 0, 5)
+    // A commit for decision 0 whose write lands after the lock-in: the row says approach 2, made at decision 0.
+    Object.assign(store.get('runs')!.get(runId)!.data, { approach: 2, approachAt: 0 })
+    expect((await call('choose', 'user_a', { runId, decision: 1, choice: 6 })).error).toBe('Choose an approach first.')
+    expect((await call('commit', 'user_a', { runId, decision: 1, approach: 0 })).success).toBe(true)
+    expect(runOf(store, runId)).toMatchObject({ approach: 0, approachAt: 1 })
+    expect((await call('choose', 'user_a', { runId, decision: 1, choice: 1 })).success).toBe(true)
+  })
+
+  it('refuses another player, a stale decision, a bad approach, a finished run and a run from the first version', async () => {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    expect((await call('commit', 'user_b', { runId, decision: 0, approach: 0 })).error).toBe('Run not found.')
+    expect((await call('commit', 'user_a', { runId, decision: 1, approach: 0 })).success).toBe(false)
+    for (const approach of [3, -1, 1.5, '1', null]) {
+      expect((await call('commit', 'user_a', { runId, decision: 0, approach })).error).toBe('Pick an approach.')
+    }
+    expect(runOf(store, runId).approach).toBe(-1)
+    await play(call, runId, choicesOf(keys, 'best'))
+    expect((await call('commit', 'user_a', { runId, decision: 4, approach: 0 })).error).toBe('This run is already finished.')
+    const old = await start(call)
+    delete store.get('runs')!.get(old)!.data.format
+    expect((await call('commit', 'user_a', { runId: old, decision: 0, approach: 0 })).error).toContain('older version')
+  })
+})
+
+describe('choose', () => {
+  it('scores a perfect run 100 with a good ending and no fix to make', async () => {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    const best = choicesOf(keys, 'best')
+    for (let d = 0; d < 4; d++) {
+      const res = await lockIn<{ done: boolean }>(call, runId, d, best[d])
+      expect(res.data).toEqual({ done: d === 3 })
+      expect(runOf(store, runId).outcomes[d]).toBe(`Outcome ${d}00.`)
+    }
+    const run = runOf(store, runId)
+    expect(run).toMatchObject({ status: 'done', score: 100, ending: 'good', endingText: 'Good.', fix: { decision: -1, gain: 0 } })
+    expect(run.steps.map((s) => s.points)).toEqual([0, 0, 0, 0])
+    expect(run.beats).toBeGreaterThanOrEqual(99)
+  })
+
+  it('lists every lost point, applies a raised flag and names the decision that raised it', async () => {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    const best = choicesOf(keys, 'best')
+    const raise = findChoice(keys, 0, (w) => !!w.raises?.length)
+    const hit = findChoice(keys, 2, (w) => !!w.ifRaised)
+    await play(call, runId, [raise, best[1], hit, best[3]])
+    const run = runOf(store, runId)
+    expect(run.steps[0]).toEqual({ grade: 'slip', points: 5, base: 'slip', causedBy: -1 })
+    expect(run.steps[2]).toEqual({ grade: 'blunder', points: 20, base: 'slip', causedBy: 0 })
+    expect(run.score).toBe(75)
+    expect(run.ending).toBe('ok')
+    expect(run.outcomes[2]).toBe('The promise comes due.')
+    // Fixing decision 1 gains 5 and stops the flag (15 more); fixing decision 3 gains 20. Ties go to the earlier decision.
+    expect(run.fix).toEqual({ decision: 0, gain: 20 })
+    expect(JSON.stringify(run)).not.toContain('Reason')
+  })
+
+  it('refuses another player, a stale decision, a bad choice and a finished run', async () => {
+    const { call, keys } = await seeded()
+    const runId = await start(call)
+    expect((await call('choose', 'user_b', { runId, decision: 0, choice: 0 })).error).toBe('Run not found.')
+    expect((await call('choose', 'user_a', { runId, decision: 1, choice: 0 })).success).toBe(false)
+    for (const choice of [9, -1, 1.5, '1', null]) {
+      expect((await call('choose', 'user_a', { runId, decision: 0, choice })).success).toBe(false)
+    }
+    await play(call, runId, choicesOf(keys, 'blunder'))
+    expect((await call('choose', 'user_a', { runId, decision: 4, choice: 0 })).error).toBe('This run is already finished.')
+  })
+
+  it('refuses to continue a run from the first version', async () => {
+    const { store, call } = await seeded()
+    const runId = await start(call)
+    delete store.get('runs')!.get(runId)!.data.format
+    expect((await call('choose', 'user_a', { runId, decision: 0, choice: 0 })).error).toContain('older version')
+  })
+})
+
+describe('rewind', () => {
+  it('keeps the choices before the decision and refuses the same choice there again', async () => {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    const blunders = choicesOf(keys, 'blunder')
+    await play(call, runId, blunders)
+
+    expect((await call('rewind', 'user_b', { runId, decision: 2 })).success).toBe(false)
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 2 })).data!.runId
+    const row = runOf(store, child)
+    expect(row).toMatchObject({ choices: blunders.slice(0, 2), parentRunId: runId, branchAt: 2, status: 'playing', score: 0, approach: -1 })
+    expect(row.outcomes).toHaveLength(2)
+
+    expect((await lockIn(call, child, 2, blunders[2])).error).toBe('You chose that last time. Rewinding is for trying a different choice.')
+    const second = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 2 })).data!.runId
+    await play(call, second, choicesOf(keys, 'best').slice(2), 2)
+    expect(runOf(store, second).score).toBe(100 - 40)
+  })
+
+  it('refuses an unfinished run, a decision out of range and an anonymous caller', async () => {
+    const { call, keys } = await seeded()
+    const runId = await start(call)
+    expect((await call('rewind', 'user_a', { runId, decision: 0 })).success).toBe(false)
+    await play(call, runId, choicesOf(keys, 'best'))
+    for (const decision of [-1, 4, '1']) expect((await call('rewind', 'user_a', { runId, decision })).success).toBe(false)
+    expect((await call('rewind', 'anon-123', { runId, decision: 0 })).error).toBe('Sign in to play.')
+  })
+})
+
+describe('explain', () => {
+  it('shows the reason for a best way at once and locks the rest until two choices were tried there', async () => {
+    const { call, keys } = await seeded()
+    const best = choicesOf(keys, 'best')
+    const raise = findChoice(keys, 0, (w) => !!w.raises?.length)
+    const hit = findChoice(keys, 2, (w) => !!w.ifRaised)
+    const first = await start(call)
+    await play(call, first, [raise, best[1], hit, best[3]])
+
+    const one = (await call<{ decisions: Explained[] }>('explain', 'user_a', { runId: first })).data!.decisions
+    expect(one.map((d) => d.unlocked)).toEqual([false, true, false, true])
+    expect(one[0]).toEqual({ unlocked: false, why: '', flag: '', tried: 1 })
+    expect(one[1].why).toBe('Reason 100.')
+
+    // A rewound run with a different choice at decision 3 unlocks that decision only.
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId: first, decision: 2 })).data!.runId
+    await play(call, child, [best[2], best[3]], 2)
+    const two = (await call<{ decisions: Explained[] }>('explain', 'user_a', { runId: first })).data!.decisions
+    expect(two.map((d) => d.unlocked)).toEqual([false, true, true, true])
+    expect(two[2]).toEqual({ unlocked: true, why: 'You promised earlier.', flag: 'You promised Friday', tried: 2 })
+  })
+
+  it('counts only the caller’s own finished runs on the same answers', async () => {
+    const { call, keys } = await seeded()
+    const mine = await start(call)
+    await play(call, mine, choicesOf(keys, 'blunder'))
+    const theirs = await start(call, 'user_b')
+    await play(call, theirs, choicesOf(keys, 'mistake'), 0, 'user_b')
+    const unfinished = await start(call)
+    expect((await lockIn(call, unfinished, 0, choicesOf(keys, 'mistake')[0])).success).toBe(true)
+    const res = (await call<{ decisions: Explained[] }>('explain', 'user_a', { runId: mine })).data!.decisions
+    expect(res.every((d) => !d.unlocked && d.tried === 1)).toBe(true)
+  })
+
+  it('counts the oldest finished runs first, so 200 later runs do not push out an earlier choice', async () => {
+    const { store, call, keys } = await seeded()
+    const blunders = choicesOf(keys, 'blunder')
+    const other = await start(call)
+    await play(call, other, [choicesOf(keys, 'best')[0], ...blunders.slice(1)])
+    const runId = await start(call)
+    await play(call, runId, blunders)
+    // 200 more finished runs, all with the same choice at the first decision: the counted window is full without the oldest.
+    const runs = store.get('runs')!
+    for (let i = 0; i < 200; i++) {
+      const id = `rec_copy_${i}`
+      runs.set(id, { recordId: id, createdBy: 'user_a', createdAt: new Date().toISOString(), data: { ...runs.get(runId)!.data } })
+    }
+    const res = (await call<{ decisions: Explained[] }>('explain', 'user_a', { runId })).data!.decisions
+    expect(res[0]).toMatchObject({ unlocked: true, tried: 2 })
+  })
+
+  it('refuses another player and an unfinished run', async () => {
+    const { call } = await seeded()
+    const runId = await start(call)
+    expect((await call('explain', 'user_a', { runId })).success).toBe(false)
+    expect((await call('explain', 'user_b', { runId })).error).toBe('Run not found.')
   })
 })
 
 describe('runs per player per day', () => {
-  /** Starts `n` runs for `userId` and returns the last run's id. */
-  async function startMany(call: ReturnType<typeof caller>, userId: string, n: number) {
-    let last = ''
-    for (let i = 0; i < n; i++) {
-      const res = await call<{ runId: string }>('startRun', userId, { scenarioId: starter.id })
-      expect(res.success).toBe(true)
-      last = res.data!.runId
-    }
-    return last
-  }
-
   it(`refuses a new run or a rewind after ${RUNS_PER_DAY} runs in 24 hours, for that player only`, async () => {
-    const { call } = await seeded()
-    const runId = await startMany(call, 'user_a', 1)
-    for (let scene = 0; scene < 5; scene++) await call('choose', 'user_a', { runId, scene, option: 0 })
-    await startMany(call, 'user_a', RUNS_PER_DAY - 1)
-
-    const again = await call('startRun', 'user_a', { scenarioId: starter.id })
-    expect(again.success).toBe(false)
-    expect(again.error).toContain(`${RUNS_PER_DAY} runs`)
+    const { call, keys } = await seeded()
+    const runId = await start(call)
+    await play(call, runId, choicesOf(keys, 'blunder'))
+    for (let i = 1; i < RUNS_PER_DAY; i++) await start(call)
+    expect((await call('startRun', 'user_a', { scenarioId: SCENARIO })).error).toContain(`${RUNS_PER_DAY} runs`)
     expect((await call('rewind', 'user_a', { runId, decision: 1 })).success).toBe(false)
-    expect((await call('startRun', 'user_b', { scenarioId: starter.id })).success).toBe(true)
+    await start(call, 'user_b')
   })
 
   it('lets the player start again once their oldest counted run is over 24 hours old', async () => {
     const { store, call } = await seeded()
-    await startMany(call, 'user_a', RUNS_PER_DAY)
-    expect((await call('startRun', 'user_a', { scenarioId: starter.id })).success).toBe(false)
+    for (let i = 0; i < RUNS_PER_DAY; i++) await start(call)
+    expect((await call('startRun', 'user_a', { scenarioId: SCENARIO })).success).toBe(false)
     const oldest = [...store.get('runs')!.values()][0]
     oldest.createdAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
-    expect((await call('startRun', 'user_a', { scenarioId: starter.id })).success).toBe(true)
+    await start(call)
   })
 
   it('refuses when the run count cannot be read', async () => {
@@ -163,7 +377,7 @@ describe('runs per player per day', () => {
     const broken = { ...tools, query: async () => ({ success: false as const, error: 'down' }) }
     const res = await playActions.startRun({
       userId: 'user_a',
-      params: { scenarioId: starter.id },
+      params: { scenarioId: SCENARIO },
       tools: broken as unknown as ActionTools,
       env,
       callerJwt: 'jwt',
@@ -179,7 +393,7 @@ describe('save failures', () => {
     const broken = { ...tools, create: async () => ({ success: false as const, error: 'SQLITE_FULL: database or disk is full' }) }
     const res = await playActions.startRun({
       userId: 'user_a',
-      params: { scenarioId: starter.id },
+      params: { scenarioId: SCENARIO },
       tools: broken as unknown as ActionTools,
       env,
       callerJwt: 'jwt',
@@ -189,86 +403,24 @@ describe('save failures', () => {
   })
 })
 
-describe('a full run, a rewind and its rules', () => {
-  it('plays every best pick to a good ending and fills the debrief', async () => {
-    const { store, call } = await seeded()
-    const start = await call<{ runId: string }>('startRun', 'user_a', { scenarioId: starter.id })
-    expect(start.success).toBe(true)
-    const runId = start.data!.runId
-    const best = pathOf('best')
-    for (let scene = 0; scene < 5; scene++) {
-      const res = await call<{ done: boolean }>('choose', 'user_a', { runId, scene, option: best[scene] })
-      expect(res.success).toBe(true)
-      expect(res.data!.done).toBe(scene === 4)
-    }
-    const run = store.get('runs')!.get(runId)!.data as unknown as RunRow
-    expect(run.status).toBe('done')
-    expect(run.ending).toBe('good')
-    expect(run.endingText).toBe(starter.endings.good)
-    expect(run.debrief.map((d) => d.kind)).toEqual(['best', 'best', 'best', 'best', 'best'])
-    expect(run.meterHistory).toHaveLength(6)
-  })
-
-  it('refuses another player, a stale scene, a bad option and a finished run', async () => {
-    const { call } = await seeded()
-    const runId = (await call<{ runId: string }>('startRun', 'user_a', { scenarioId: starter.id })).data!.runId
-    expect((await call('choose', 'user_b', { runId, scene: 0, option: 0 })).error).toBe('Run not found.')
-    expect((await call('choose', 'user_a', { runId, scene: 1, option: 0 })).success).toBe(false)
-    expect((await call('choose', 'user_a', { runId, scene: 0, option: 3 })).success).toBe(false)
-    expect((await call('choose', 'user_a', { runId, scene: 0, option: '1' })).success).toBe(false)
-    for (let scene = 0; scene < 5; scene++) await call('choose', 'user_a', { runId, scene, option: 0 })
-    expect((await call('choose', 'user_a', { runId, scene: 5, option: 0 })).error).toBe('This run is already finished.')
-  })
-
-  it('rewinds to a decision, keeps the picks before it and refuses the same pick again', async () => {
-    const { store, call } = await seeded()
-    const runId = (await call<{ runId: string }>('startRun', 'user_a', { scenarioId: starter.id })).data!.runId
-    const trap = pathOf('trap')
-    for (let scene = 0; scene < 5; scene++) await call('choose', 'user_a', { runId, scene, option: trap[scene] })
-
-    expect((await call('rewind', 'user_b', { runId, decision: 2 })).success).toBe(false)
-    const child = await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 2 })
-    expect(child.success).toBe(true)
-    const childId = child.data!.runId
-    const childRow = store.get('runs')!.get(childId)!.data as unknown as RunRow
-    expect(childRow.choices).toEqual(trap.slice(0, 2))
-    expect(childRow.meterHistory).toHaveLength(3)
-    expect(childRow.parentRunId).toBe(runId)
-
-    const same = await call('choose', 'user_a', { runId: childId, scene: 2, option: trap[2] })
-    expect(same.success).toBe(false)
-    const best = pathOf('best')
-    expect((await call('choose', 'user_a', { runId: childId, scene: 2, option: best[2] })).success).toBe(true)
-  })
-
-  it('refuses rewinding an unfinished run', async () => {
-    const { call } = await seeded()
-    const runId = (await call<{ runId: string }>('startRun', 'user_a', { scenarioId: starter.id })).data!.runId
-    expect((await call('rewind', 'user_a', { runId, decision: 0 })).success).toBe(false)
-  })
-})
-
 describe('canPlay', () => {
-  it('lets only the author start or rewind a private scenario', async () => {
+  it('lets only the author start a private scenario', async () => {
     const { store, call } = await seeded()
-    const row = store.get('scenarios')!.get(starter.id!)!
-    row.data.visibility = 'private'
-    row.data.authorId = 'user_a'
-    expect((await call('startRun', 'user_b', { scenarioId: starter.id })).success).toBe(false)
-    expect((await call('startRun', 'user_a', { scenarioId: starter.id })).success).toBe(true)
+    Object.assign(store.get('scenarios')!.get(SCENARIO)!.data, { visibility: 'private', authorId: 'user_a' })
+    expect((await call('startRun', 'user_b', { scenarioId: SCENARIO })).success).toBe(false)
+    await start(call)
   })
 
   it('lets only the author play a taken-down scenario, even if it was left public', async () => {
     const { store, call } = await seeded()
-    const row = store.get('scenarios')!.get(starter.id!)!
-    Object.assign(row.data, { visibility: 'public', authorId: 'user_a', takenDown: true })
-    expect((await call('startRun', 'user_b', { scenarioId: starter.id })).success).toBe(false)
-    expect((await call('startRun', 'user_a', { scenarioId: starter.id })).success).toBe(true)
+    Object.assign(store.get('scenarios')!.get(SCENARIO)!.data, { visibility: 'public', authorId: 'user_a', takenDown: true })
+    expect((await call('startRun', 'user_b', { scenarioId: SCENARIO })).success).toBe(false)
+    await start(call)
   })
 
   it('never lets anyone play a private starter (authorId is empty)', async () => {
     const { store, call } = await seeded()
-    store.get('scenarios')!.get(starter.id!)!.data.visibility = 'private'
-    expect((await call('startRun', OWNER, { scenarioId: starter.id })).success).toBe(false)
+    store.get('scenarios')!.get(SCENARIO)!.data.visibility = 'private'
+    expect((await call('startRun', OWNER, { scenarioId: SCENARIO })).success).toBe(false)
   })
 })

@@ -5,6 +5,7 @@
  * model (billed to the app owner), so it runs only when RUN_AI_TESTS=1.
  */
 import { test, expect } from 'deepspace/testing'
+import { DECISIONS } from '../src/features/play/types'
 
 test.setTimeout(180_000)
 
@@ -37,11 +38,12 @@ test('write a scenario, play it, publish it to another player, then make it priv
   const box = alice.page.getByTestId('write-your-own')
   await box.getByRole('textbox').fill('Telling my landlord the heater has been broken for two weeks and I want it fixed this week')
   await box.getByRole('button', { name: 'Write and play' }).click()
-  await alice.page.waitForURL(/\/run\//, { timeout: 120_000 })
-  await expect(alice.page.getByTestId('decision').getByText('Decision 1 of 5')).toBeVisible({ timeout: 15_000 })
-  // The hidden half (meter changes) never reaches her browser. "why" is not
-  // searched: her finished runs from earlier sessions rightly carry a debrief.
-  expect(frames.filter((t) => /"(delta|effects)"\s*:/.test(t))).toEqual([])
+  await alice.page.waitForURL(/\/run\//, { timeout: 120_000 }) // the action stops at 95 s
+  await expect(alice.page.getByTestId('decision').getByText(`Decision 1 of ${DECISIONS}`)).toBeVisible({ timeout: 15_000 })
+  // The hidden half (each way's reason, outcome, flags and answers) never
+  // reaches her browser. "grade" is not searched: her finished runs from
+  // earlier sessions rightly carry their graded steps.
+  expect(frames.filter((t) => /"(why|outcome|raises|ifRaised|wayKeys)"\s*:/.test(t))).toEqual([])
 
   // 2. It is hers and private: Bob cannot see it.
   await alice.page.goto('/home')

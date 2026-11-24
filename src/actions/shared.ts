@@ -7,7 +7,7 @@
  * checks ownership or canPlay itself before acting on what it loaded.
  */
 import type { ActionResult, ActionTools } from 'deepspace/worker'
-import type { RunRow, ScenarioAnswers, ScenarioRow } from '../features/play/types'
+import { FORMAT, type RunRow, type ScenarioAnswers, type ScenarioRow } from '../features/play/types'
 
 export function ok<T>(data: T): ActionResult<T> {
   return { success: true, data }
@@ -60,4 +60,13 @@ export function canPlay(scenario: Pick<ScenarioRow, 'visibility' | 'authorId' | 
   // write left it public (see setVisibility).
   if (scenario.authorId !== '' && scenario.authorId === userId) return true
   return scenario.visibility === 'public' && !scenario.takenDown
+}
+
+/**
+ * True for rows written in the graded shape (`format: 2`). Rows from the
+ * first version (no format) have a different shape and cannot be played or
+ * scored by this code.
+ */
+export function isGraded(row: { format?: unknown } | null): boolean {
+  return row?.format === FORMAT
 }

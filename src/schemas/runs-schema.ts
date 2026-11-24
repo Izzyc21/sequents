@@ -4,8 +4,10 @@
  * where it splits (branchAt), so the two can be compared.
  *
  * Players only ever receive their own runs (read 'own' on playerId). Nobody
- * writes runs from the browser: the startRun, choose and rewind actions do,
- * after checking the move is legal, so a player cannot set their own meters.
+ * writes runs from the browser: the startRun, commit, choose and rewind actions do,
+ * after checking the move is legal, so a player cannot set their own score.
+ * A run holds grades and points once it ends, never the reasons: those come
+ * from the explain action once unlocked.
  */
 import type { CollectionSchema } from 'deepspace/schema'
 
@@ -15,6 +17,8 @@ const ownReadOnly = { read: 'own', create: false, update: false, delete: false }
 export const runsSchema: CollectionSchema = {
   name: 'runs',
   columns: [
+    // 2 for runs of the graded version; missing on runs from the first version.
+    { name: 'format', storage: 'number', interpretation: 'plain' },
     { name: 'scenarioId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
     { name: 'playerId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
     { name: 'parentRunId', storage: 'text', interpretation: 'plain' },
@@ -22,17 +26,23 @@ export const runsSchema: CollectionSchema = {
     { name: 'snapshot', storage: 'text', interpretation: { kind: 'json' } },
     { name: 'answersId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
     { name: 'choices', storage: 'text', interpretation: { kind: 'json' } },
-    { name: 'meterHistory', storage: 'text', interpretation: { kind: 'json' } },
     { name: 'outcomes', storage: 'text', interpretation: { kind: 'json' } },
+    // The approach committed to at the next decision; -1 when none (see RunRow.approach).
+    { name: 'approach', storage: 'number', interpretation: 'plain' },
+    // The decision that approach was committed at (see RunRow.approachAt).
+    { name: 'approachAt', storage: 'number', interpretation: 'plain' },
     {
       name: 'status',
       storage: 'text',
       interpretation: { kind: 'select', options: ['playing', 'done'] },
       required: true,
     },
+    { name: 'score', storage: 'number', interpretation: 'plain' },
+    { name: 'steps', storage: 'text', interpretation: { kind: 'json' } },
+    { name: 'fix', storage: 'text', interpretation: { kind: 'json' } },
+    { name: 'beats', storage: 'number', interpretation: 'plain' },
     { name: 'ending', storage: 'text', interpretation: 'plain' },
     { name: 'endingText', storage: 'text', interpretation: 'plain' },
-    { name: 'debrief', storage: 'text', interpretation: { kind: 'json' } },
   ],
   ownerField: 'playerId',
   permissions: { '*': nothing, viewer: nothing, member: ownReadOnly, admin: ownReadOnly },

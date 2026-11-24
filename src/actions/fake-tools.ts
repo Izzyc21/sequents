@@ -2,7 +2,9 @@
  * In-memory stand-in for the record tools an action receives, for unit tests.
  * Like the real tools it ignores permissions; create with a recordId merges
  * into an existing row; query filters by exact match, returns newest first
- * (createdAt, like the platform's default) and honours offset and limit.
+ * (createdAt, like the platform's default), oldest first only when both
+ * orderBy and orderDir 'asc' are given (the platform ignores orderDir
+ * without orderBy), and honours offset and limit.
  * Every tool body runs to completion before it returns, so calls that run at
  * the same time interleave only between tool calls, one operation at a time,
  * like the platform's record store.
@@ -47,7 +49,7 @@ export function fakeTools(userId: string, store = new Map<string, Map<string, Ro
     },
     async query(
       collection: string,
-      options: { where?: Record<string, unknown>; orderDir?: 'asc' | 'desc'; limit?: number; offset?: number } = {},
+      options: { where?: Record<string, unknown>; orderBy?: string; orderDir?: 'asc' | 'desc'; limit?: number; offset?: number } = {},
     ) {
       const where = options.where ?? {}
       // Map keeps insertion order, which is creation order here.
@@ -56,7 +58,7 @@ export function fakeTools(userId: string, store = new Map<string, Map<string, Ro
           k === 'recordId' ? r.recordId === v : k === 'createdBy' ? r.createdBy === v : r.data[k] === v,
         ),
       )
-      if (options.orderDir !== 'asc') matching.reverse()
+      if (!(options.orderBy && options.orderDir === 'asc')) matching.reverse()
       const offset = options.offset ?? 0
       const records = matching.slice(offset, offset + (options.limit ?? 50)).map(clone)
       return { success: true as const, data: { records, count: records.length } }

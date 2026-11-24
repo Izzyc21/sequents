@@ -22,8 +22,10 @@ export const scenariosSchema: CollectionSchema = {
     { name: 'title', storage: 'text', interpretation: 'plain', required: true },
     { name: 'situation', storage: 'text', interpretation: 'plain' },
     { name: 'setting', storage: 'text', interpretation: 'plain' },
-    { name: 'meters', storage: 'text', interpretation: { kind: 'json' } },
-    { name: 'scenes', storage: 'text', interpretation: { kind: 'json' } },
+    // 2 for graded scenarios; missing on scenarios from the first version, which pages hide.
+    { name: 'format', storage: 'number', interpretation: 'plain' },
+    { name: 'decisions', storage: 'text', interpretation: { kind: 'json' } },
+    { name: 'guessAverage', storage: 'number', interpretation: 'plain' },
     {
       name: 'visibility',
       storage: 'text',

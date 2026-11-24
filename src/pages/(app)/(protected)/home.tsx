@@ -15,7 +15,7 @@ import { useAuth, useQuery, useUser } from 'deepspace'
 import { Badge, Button, ConfirmModal, EmptyState, useToast } from '@/components/ui'
 import { ENDING_BADGE, ENDING_LABEL } from '../../../features/play/labels'
 import { runAction } from '../../../features/play/runAction'
-import type { RunRow, ScenarioRow, Visibility } from '../../../features/play/types'
+import { CHOICES, DECISIONS, FORMAT, type RunRow, type ScenarioRow, type Visibility } from '../../../features/play/types'
 import { WriteYourOwn } from '../../../features/play/WriteYourOwn'
 
 export default function Home() {
@@ -26,10 +26,11 @@ export default function Home() {
   const toast = useToast()
   // Everything this user can read (starters, others' public ones, their own),
   // plus their own in a query of its own so "Yours" never drops off the end
-  // of the shared list as more players publish.
-  const { records: scenarios, status } = useQuery<ScenarioRow>('scenarios', { limit: 200 })
-  const { records: own } = useQuery<ScenarioRow>('scenarios', { where: { authorId: userId ?? '' }, limit: 100 })
-  const { records: runs } = useQuery<RunRow>('runs', { limit: 12 })
+  // of the shared list as more players publish. Only rows in the current
+  // format: rows from the first version have no `format` and are skipped.
+  const { records: scenarios, status } = useQuery<ScenarioRow>('scenarios', { where: { format: FORMAT }, limit: 200 })
+  const { records: own } = useQuery<ScenarioRow>('scenarios', { where: { authorId: userId ?? '', format: FORMAT }, limit: 100 })
+  const { records: runs } = useQuery<RunRow>('runs', { where: { format: FORMAT }, limit: 12 })
   const [starting, setStarting] = useState<string | null>(null)
   const [publishing, setPublishing] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -91,13 +92,9 @@ export default function Home() {
     <li key={s.recordId} className="flex flex-col rounded-lg border border-border bg-card p-5" data-testid="scenario-card">
       <h3 className="font-semibold text-foreground">{s.data.title}</h3>
       <p className="mt-1 flex-1 text-sm text-muted-foreground">{s.data.situation}</p>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {s.data.meters.map((m) => (
-          <Badge key={m.name} variant="outline" size="sm">
-            {m.name}
-          </Badge>
-        ))}
-      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        {DECISIONS} decisions, {CHOICES} choices each. Random picking scores about {s.data.guessAverage}.
+      </p>
       <div className="mt-4 flex gap-2">
         <Button className="flex-1" size="sm" loading={starting === s.recordId} disabled={starting !== null} onClick={() => start(s.recordId)}>
           Start
@@ -138,8 +135,9 @@ export default function Home() {
       <header className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Rehearse a hard moment</h1>
         <p className="mt-1 max-w-2xl text-muted-foreground">
-          Five decisions, three choices each. Watch the meters move, see how it ends, then rewind any decision and
-          compare the two runs.
+          Four decisions. At each one, pick what you do, then exactly how. Every choice is something a sensible person
+          might do; only one is best. You start at 100 and lose points for each weaker choice. At the end you see every
+          point you lost, and you can rewind any decision to find a better line.
         </p>
       </header>
 
@@ -159,9 +157,13 @@ export default function Home() {
                     </span>
                   </span>
                   {r.data.status === 'done' && r.data.ending ? (
-                    <Badge variant={ENDING_BADGE[r.data.ending]}>{ENDING_LABEL[r.data.ending]}</Badge>
+                    <Badge variant={ENDING_BADGE[r.data.ending]}>
+                      {r.data.score} / 100 · {ENDING_LABEL[r.data.ending]}
+                    </Badge>
                   ) : (
-                    <Badge variant="secondary">Decision {r.data.choices.length + 1} of 5</Badge>
+                    <Badge variant="secondary">
+                      Decision {r.data.choices.length + 1} of {DECISIONS}
+                    </Badge>
                   )}
                 </Link>
               </li>

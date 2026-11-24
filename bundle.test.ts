@@ -1,6 +1,7 @@
 /**
- * The browser bundle must not contain any starter's hidden half: the "why"
- * behind each option, each option's outcome, or the ending texts. Starters
+ * The browser bundle must not contain any starter's hidden half: each way's
+ * outcome and "why" (and their flag variants), the flag labels, or the
+ * ending texts. Starters
  * are imported by the worker only; this catches a client import of them.
  *
  * Reads the built client in dist/client (run `npm run build` first). With
@@ -25,7 +26,10 @@ function files(dir: string): string[] {
 
 /** Every hidden string of every starter. */
 const hidden = STARTERS.flatMap((s) => [
-  ...s.scenes.flatMap((scene) => scene.options.flatMap((o) => [o.why, o.outcome])),
+  ...s.decisions.flatMap((d) =>
+    d.approaches.flatMap((a) => a.ways.flatMap((w) => [w.why, w.outcome, ...(w.ifRaised ? [w.ifRaised.why, w.ifRaised.outcome] : [])])),
+  ),
+  ...s.flags.map((f) => f.label),
   s.endings.good,
   s.endings.ok,
   s.endings.bad,

@@ -13,9 +13,9 @@ import { APP_NAME } from '../constants'
 import { seo } from '../seo'
 
 const STEPS = [
-  { title: 'Play', text: 'Pick a scenario: asking for a raise, an angry customer on the phone, a rent increase. Make five decisions and watch three meters move.' },
-  { title: 'Read the debrief', text: 'See how it ended, how each pick played out and why, and which decision moved things the most.' },
-  { title: 'Rewind and compare', text: 'Go back to any decision, choose differently, and see both runs side by side: where they split and how far apart they ended.' },
+  { title: 'Play', text: 'Pick a scenario: asking for a raise, a phishing email at work, a rent increase. Four decisions: at each, choose what you do, then exactly how.' },
+  { title: 'See every lost point', text: 'You start at 100. The debrief lists each point you lost, which earlier choice made a later one worse, and your biggest single fix.' },
+  { title: 'Rewind and compare', text: 'Go back to any decision and try another line. Reasons unlock once you have tried two choices at a decision, so you work it out first.' },
 ]
 
 export default function Landing() {
@@ -28,8 +28,8 @@ export default function Landing() {
           Rehearse a hard moment, then replay it
         </h1>
         <p className="mb-10 max-w-lg text-muted-foreground">
-          Practise the conversation before it happens. Every choice moves the outcome, and you can always go back and try
-          another way.
+          Practise the decision before it happens. Every option is something a sensible person might do, and only one is
+          best, so a first try rarely scores 100.
         </p>
         <ol className="mb-10 grid max-w-4xl gap-4 text-left sm:grid-cols-3">
           {STEPS.map((step, i) => (

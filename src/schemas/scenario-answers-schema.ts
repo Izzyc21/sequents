@@ -1,11 +1,11 @@
 /**
- * `scenario_answers`: the hidden half of each scenario. One row per scenario,
- * with the same recordId: what every option does to the meters, its outcome
- * text, whether it was the best, ok or trap pick and why, and the endings.
+ * `scenario_answers`: the hidden half of each scenario (recordId = the
+ * scenario's answersId): every way's grade, outcome and why, the flags and
+ * their overrides, and the endings.
  *
  * No role can read or write it. The record room drops rows a caller cannot
  * read before anything is sent over the WebSocket, so the answers never reach
- * a browser. Only server actions (startRun, choose) open it, one pick at a time.
+ * a browser. Only server actions (startRun, choose, explain) open it.
  */
 import type { CollectionSchema } from 'deepspace/schema'
 
@@ -15,7 +15,9 @@ export const scenarioAnswersSchema: CollectionSchema = {
   name: 'scenario_answers',
   columns: [
     { name: 'scenarioId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
-    { name: 'effects', storage: 'text', interpretation: { kind: 'json' } },
+    { name: 'format', storage: 'number', interpretation: 'plain' },
+    { name: 'wayKeys', storage: 'text', interpretation: { kind: 'json' } },
+    { name: 'flags', storage: 'text', interpretation: { kind: 'json' } },
     { name: 'endings', storage: 'text', interpretation: { kind: 'json' } },
   ],
   permissions: { '*': nothing, viewer: nothing, member: nothing, admin: nothing },
