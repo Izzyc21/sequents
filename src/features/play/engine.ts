@@ -108,15 +108,20 @@ function textProblem(label: string, value: unknown, max: number): string | null 
  * Every rule a scenario must pass before it can be played. Returns the
  * problems found; an empty list means the scenario is playable.
  *
- * Beyond shape and limits, it checks that the choices matter: within each
- * decision the best option's deltas must sum higher than the ok option's,
- * and the ok option's higher than the trap's; picking the best option at
- * every decision must end good, the ok option at every decision ok, and the
- * trap at every decision bad; and across all 243 paths each ending must be
- * reached at least MIN_PATHS_PER_ENDING times. It does not promise that one
- * best pick on a mixed path always helps every meter.
+ * First the shape and text limits (`shapeProblems`), then, only if those
+ * pass, how the numbers play out (`behaviourProblems`).
  */
 export function checkScenario(draft: ScenarioDraft): string[] {
+  const problems = shapeProblems(draft)
+  return problems.length > 0 ? problems : behaviourProblems(draft)
+}
+
+/**
+ * Counts, kinds, text limits and the form of every number: everything except
+ * how the picks play out. Stops early when a list has the wrong length, since
+ * the checks after it index into that list.
+ */
+export function shapeProblems(draft: ScenarioDraft): string[] {
   const problems: string[] = []
   const add = (p: string | null) => {
     if (p) problems.push(p)
@@ -125,6 +130,9 @@ export function checkScenario(draft: ScenarioDraft): string[] {
   add(textProblem('title', draft?.title, LIMITS.title))
   add(textProblem('situation', draft?.situation, LIMITS.situation))
   add(textProblem('setting', draft?.setting, LIMITS.setting))
+  for (const ending of ['good', 'ok', 'bad'] as const) {
+    add(textProblem(`${ending} ending`, draft?.endings?.[ending], LIMITS.ending))
+  }
 
   if (!Array.isArray(draft?.meters) || draft.meters.length !== METERS) {
     problems.push(`needs exactly ${METERS} meters`)
@@ -163,9 +171,20 @@ export function checkScenario(draft: ScenarioDraft): string[] {
       problems.push(`scene ${s + 1} needs one best, one ok and one trap option`)
     }
   })
-  if (problems.length > 0) return problems
+  return problems
+}
 
-  // Shape is sound from here on: check that the picks behave as labelled.
+/**
+ * Checks that the choices matter. Call it only on a draft with no shape
+ * problems. Within each decision the best option's deltas must sum higher
+ * than the ok option's, and the ok option's higher than the trap's; picking
+ * the best option at every decision must end good, the ok option at every
+ * decision ok, and the trap at every decision bad; and across all 243 paths
+ * each ending must be reached at least MIN_PATHS_PER_ENDING times. It does
+ * not promise that one best pick on a mixed path always helps every meter.
+ */
+export function behaviourProblems(draft: ScenarioDraft): string[] {
+  const problems: string[] = []
   draft.scenes.forEach((scene, s) => {
     const total = (kind: OptionKind) => sum(scene.options.find((o) => o.kind === kind)!.delta)
     if (!(total('best') > total('ok') && total('ok') > total('trap'))) {
@@ -187,10 +206,72 @@ export function checkScenario(draft: ScenarioDraft): string[] {
       problems.push(`only ${counts[ending]} of 243 paths end ${ending}; needs at least ${MIN_PATHS_PER_ENDING}`)
     }
   }
-  for (const ending of ['good', 'ok', 'bad'] as const) {
-    add(textProblem(`${ending} ending`, draft.endings?.[ending], LIMITS.ending))
-  }
   return problems
+}
+
+/** Total meter change each kind of pick aims for, per decision, tried in this order. */
+const KIND_TOTALS: Record<OptionKind, number>[] = [
+  { best: 15, ok: 3, trap: -15 },
+  { best: 12, ok: 2, trap: -12 },
+  { best: 18, ok: 3, trap: -18 },
+  { best: 15, ok: 0, trap: -20 },
+]
+/** How much of the writer's own meter pattern to keep, tried from most to least. */
+const KEEP = [1, 0.8, 0.6, 0.4, 0.2, 0]
+const EVEN_STARTS = [50, 50, 50]
+
+/**
+ * Tunes the numbers of a draft whose text and shape are sound so that it
+ * passes `behaviourProblems`. A language model writes good options but
+ * cannot add up 243 paths, so its numbers are a first guess.
+ *
+ * Each option keeps the writer's pattern (which meters it raises or lowers)
+ * as far as possible, rescaled so its total matches what its kind should
+ * do, then blended toward an even split across the meters. The search keeps
+ * as much of the writer's pattern as it can and returns the first candidate
+ * that passes. With nothing kept, even starts and the first totals, every
+ * rule holds (a test proves it), so for a draft with no shape problems this
+ * always returns a playable draft. Returns the draft unchanged if its own
+ * numbers already pass, and null if it has shape problems.
+ */
+export function calibrateDraft(draft: ScenarioDraft): ScenarioDraft | null {
+  if (shapeProblems(draft).length > 0) return null
+  if (behaviourProblems(draft).length === 0) return draft
+  const ownStarts = draft.meters.map((m) => m.start)
+  for (const keep of KEEP) {
+    for (const starts of [ownStarts, EVEN_STARTS]) {
+      for (const totals of KIND_TOTALS) {
+        const candidate: ScenarioDraft = {
+          ...draft,
+          meters: draft.meters.map((m, i) => ({ ...m, start: starts[i] })),
+          scenes: draft.scenes.map((scene) => ({
+            ...scene,
+            options: scene.options.map((o) => ({ ...o, delta: tunedDelta(o.delta, totals[o.kind], keep) })),
+          })),
+        }
+        if (behaviourProblems(candidate).length === 0) return candidate
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * One option's meter changes, aimed at `target` in total. The writer's
+ * pattern is scaled when its total points the same way and the scale stays
+ * between 0.5 and 5; otherwise it is shifted evenly. `keep` blends the result
+ * with an even split (1 = all pattern, 0 = all even).
+ */
+function tunedDelta(delta: number[], target: number, keep: number): number[] {
+  const own = sum(delta)
+  const factor = own !== 0 ? target / own : 0
+  const pattern =
+    factor >= 0.5 && factor <= 5 ? delta.map((d) => d * factor) : delta.map((d) => d + (target - own) / delta.length)
+  const even = target / delta.length
+  return pattern.map((p) => {
+    const value = Math.round(keep * p + (1 - keep) * even)
+    return Math.max(-DELTA_LIMIT, Math.min(DELTA_LIMIT, value))
+  })
 }
 
 function toEffects(draft: ScenarioDraft): Effect[][] {

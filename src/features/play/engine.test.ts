@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { STARTERS } from '../../seeds/starters'
 import {
   applyDelta,
+  behaviourProblems,
+  calibrateDraft,
   checkScenario,
   countEndings,
   endingFor,
@@ -111,5 +113,62 @@ describe('repairDraft and shuffleOptions', () => {
     const before = countEndings(STARTERS[1].meters.map((m) => m.start), splitDraft(STARTERS[1]).answers.effects)
     const after = countEndings(shuffled.meters.map((m) => m.start), splitDraft(shuffled).answers.effects)
     expect(after).toEqual(before)
+  })
+})
+
+describe('calibrateDraft', () => {
+  const copy = (d: ScenarioDraft): ScenarioDraft => JSON.parse(JSON.stringify(d))
+  let seed = 7
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  const randomInt = (lo: number, hi: number) => lo + Math.floor(random() * (hi - lo + 1))
+
+  it('returns a draft whose numbers already pass unchanged', () => {
+    expect(calibrateDraft(STARTERS[0])).toBe(STARTERS[0])
+  })
+
+  it('returns null for a draft with shape problems', () => {
+    const d = copy(STARTERS[0])
+    d.scenes.pop()
+    expect(calibrateDraft(d)).toBeNull()
+  })
+
+  it('makes a draft with all-zero numbers playable', () => {
+    const d = copy(STARTERS[0])
+    d.scenes.forEach((scene) => scene.options.forEach((o) => (o.delta = [0, 0, 0])))
+    expect(behaviourProblems(d)).not.toEqual([])
+    const tuned = calibrateDraft(d)!
+    expect(checkScenario(tuned)).toEqual([])
+  })
+
+  it('makes every draft with random numbers playable, changing only numbers', () => {
+    for (let n = 0; n < 300; n++) {
+      const d = copy(STARTERS[n % STARTERS.length])
+      d.meters.forEach((m) => (m.start = randomInt(30, 70)))
+      d.scenes.forEach((scene) => scene.options.forEach((o) => (o.delta = [0, 0, 0].map(() => randomInt(-25, 25)))))
+      const tuned = calibrateDraft(d)
+      expect(tuned, `draft ${n}`).not.toBeNull()
+      expect(checkScenario(tuned!), `draft ${n}`).toEqual([])
+      const text = (x: ScenarioDraft) =>
+        JSON.stringify({ ...x, meters: x.meters.map((m) => m.name), scenes: x.scenes.map((s) => [s.prompt, s.options.map((o) => [o.text, o.kind, o.outcome, o.why])]) })
+      expect(text(tuned!)).toBe(text(d))
+    }
+  })
+
+  // An ok pick must total a little above zero, so an ok option the writer made
+  // negative overall has to change direction somewhere; best and trap need not.
+  it("keeps each best and trap option's direction when a rescale is enough", () => {
+    const d = copy(STARTERS[0])
+    // Halve every change: same pattern, too weak to reach the good ending.
+    d.scenes.forEach((scene) => scene.options.forEach((o) => (o.delta = o.delta.map((v) => Math.trunc(v / 2)))))
+    const tuned = calibrateDraft(d)!
+    expect(checkScenario(tuned)).toEqual([])
+    tuned.scenes.forEach((scene, s) =>
+      scene.options.forEach((o, i) =>
+        o.delta.forEach((v, k) => {
+          const before = d.scenes[s].options[i].delta[k]
+          if (before !== 0 && o.kind !== 'ok') expect(Math.sign(v) === Math.sign(before) || v === 0, `scene ${s} option ${i} meter ${k}`).toBe(true)
+        }),
+      ),
+    )
   })
 })
