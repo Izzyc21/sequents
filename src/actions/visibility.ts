@@ -31,6 +31,16 @@ export const visibilityActions: Record<string, ActionHandler<Env>> = {
     if (scenario.visibility === visibility) return ok({ scenarioId, visibility })
     const res = await tools.update('scenarios', scenarioId, { visibility })
     if (!res.success) return saveFailed('setVisibility', res.error)
+    if (visibility === 'public') {
+      // The owner's takedown may have landed between the read above and this
+      // write. Each store operation runs in order, so reading again now sees
+      // it; if so, undo the publish.
+      const after = await loadScenario(tools, scenarioId)
+      if (!after || after.takenDown) {
+        await tools.update('scenarios', scenarioId, { visibility: 'private' })
+        return fail(TAKEN_DOWN)
+      }
+    }
     return ok({ scenarioId, visibility })
   },
 

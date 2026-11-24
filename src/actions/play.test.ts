@@ -258,6 +258,14 @@ describe('canPlay', () => {
     expect((await call('startRun', 'user_a', { scenarioId: starter.id })).success).toBe(true)
   })
 
+  it('lets only the author play a taken-down scenario, even if it was left public', async () => {
+    const { store, call } = await seeded()
+    const row = store.get('scenarios')!.get(starter.id!)!
+    Object.assign(row.data, { visibility: 'public', authorId: 'user_a', takenDown: true })
+    expect((await call('startRun', 'user_b', { scenarioId: starter.id })).success).toBe(false)
+    expect((await call('startRun', 'user_a', { scenarioId: starter.id })).success).toBe(true)
+  })
+
   it('never lets anyone play a private starter (authorId is empty)', async () => {
     const { store, call } = await seeded()
     store.get('scenarios')!.get(starter.id!)!.data.visibility = 'private'

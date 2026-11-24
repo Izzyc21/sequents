@@ -112,6 +112,31 @@ describe('setVisibility', () => {
     expect(visibility('gen_1')).toBe('private')
   })
 
+  it('undoes a publish when the takedown lands between its read and its write', async () => {
+    const store: ReturnType<typeof fakeTools>['store'] = new Map()
+    await fakeTools(AUTHOR, store).tools.create('scenarios', { authorId: AUTHOR, visibility: 'private', starter: false }, 'gen_1')
+    const authorTools = fakeTools(AUTHOR, store).tools
+    const realUpdate = authorTools.update.bind(authorTools)
+    let raced = false
+    // The owner's unpublish lands just before the author's publish write.
+    authorTools.update = async (...args: Parameters<typeof realUpdate>) => {
+      if (!raced) {
+        raced = true
+        await fakeTools(OWNER, store).tools.update('scenarios', 'gen_1', { visibility: 'private', takenDown: true })
+      }
+      return realUpdate(...args)
+    }
+    const res = await visibilityActions.setVisibility({
+      userId: AUTHOR,
+      params: { scenarioId: 'gen_1', visibility: 'public' },
+      tools: authorTools,
+      env,
+      callerJwt: 'jwt',
+    })
+    expect(res).toEqual({ success: false, error: TAKEN_DOWN })
+    expect(store.get('scenarios')?.get('gen_1')?.data).toMatchObject({ visibility: 'private', takenDown: true })
+  })
+
   it('treats a change to the current visibility as done without writing', async () => {
     const { seed, setVisibility, visibility } = setup()
     await seed('gen_1', { visibility: 'public', starter: false })

@@ -44,7 +44,7 @@ export default function Home() {
     const byTitle = (a: { data: ScenarioRow }, b: { data: ScenarioRow }) => a.data.title.localeCompare(b.data.title)
     return {
       starters: scenarios.filter((s) => s.data.starter).sort(byTitle),
-      shared: scenarios.filter((s) => !s.data.starter && s.data.authorId !== userId).sort(byTitle),
+      shared: scenarios.filter((s) => !s.data.starter && s.data.authorId !== userId && !s.data.takenDown).sort(byTitle),
       mine: own.filter((s) => !s.data.starter).sort(byTitle),
     }
   }, [scenarios, own, userId])

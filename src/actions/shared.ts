@@ -55,6 +55,9 @@ export const loadAnswers = (tools: ActionTools, answersId: string) =>
 export const loadRun = (tools: ActionTools, id: string) => load<RunRow & Record<string, unknown>>(tools, 'runs', id)
 
 /** Anyone signed in may play a public scenario; a private one only its author. */
-export function canPlay(scenario: Pick<ScenarioRow, 'visibility' | 'authorId'>, userId: string): boolean {
-  return scenario.visibility === 'public' || (scenario.authorId !== '' && scenario.authorId === userId)
+export function canPlay(scenario: Pick<ScenarioRow, 'visibility' | 'authorId' | 'takenDown'>, userId: string): boolean {
+  // A taken-down scenario stays playable only by its author, even if a late
+  // write left it public (see setVisibility).
+  if (scenario.authorId !== '' && scenario.authorId === userId) return true
+  return scenario.visibility === 'public' && !scenario.takenDown
 }
