@@ -24,7 +24,7 @@ const draft: ScenarioDraft = {
               why: 'Stopping new sign-ins first, then ending live ones, shuts both doors. Leaving her settings alone keeps what the attacker added visible while you decide what to remove.',
             },
             {
-              text: 'Block her sign-in, revoke her sessions and tokens, then reset her password and clear her sign-in methods straight away',
+              text: 'Block her sign-in, revoke her sessions and tokens, then reset her password and clear all her sign-in methods immediately',
               grade: 'slip',
               outcome: 'The account is blocked, the session ends and the new password is set. Every method is gone, the attacker’s too, before anyone noted what was there; Dana must set up her phone again.',
               why: 'Safe, but out of order. With sign-in blocked and sessions revoked the attacker is already out, so clearing could wait; doing it now removed their method before it was recorded. Contain, record, remove.',

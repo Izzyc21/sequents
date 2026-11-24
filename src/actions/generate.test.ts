@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
-import { checkScenario, LIMITS, repairDraft } from '../features/play/engine'
+import { checkScenario, LIMITS, longestBestCount, MAX_LONGEST_BEST, repairDraft } from '../features/play/engine'
 import { fixture, MIX } from '../features/play/fixture'
 import type { ScenarioAnswers, ScenarioDraft, ScenarioRow } from '../features/play/types'
 import { fakeTools } from './fake-tools'
@@ -10,21 +10,29 @@ import {
   applyFixes,
   applyWhys,
   ASK,
+  CUES_SYSTEM_PROMPT,
+  cuedSlots,
   beatsMix,
   CALLS_PER_APP_PER_DAY,
   CALLS_PER_USER_PER_DAY,
   FIX_SYSTEM_PROMPT,
   fixRequest,
+  fitHiddenTexts,
   FLAG_ID,
   type Generated,
+  isCueProblem,
   isFixableProblem,
   isLengthProblem,
   keepsDetails,
   makeGenerateActions,
   pickVersions,
   type ScenarioWriter,
+  MIN_TRIMMED,
+  TRIM_KEEP_SHARE,
+  slotFeedback,
   slotsToDraft,
   SYSTEM_PROMPT,
+  trimToSentence,
   VERSIONS_SYSTEM_PROMPT,
   WHYS_SYSTEM_PROMPT,
   wordCountNotes,
@@ -61,6 +69,9 @@ function answer(overrides: Partial<Generated> = {}): Generated {
     ...overrides,
   }
 }
+
+/** checkScenario's problem for a best way that is the longest of its approach in every decision, as in longestWins. */
+const LONGEST_BEST_ALL = 'the best way is the longest of its approach in 4 of 4 decisions, more than 2'
 
 /** A writer that returns the given answers in order (an Error is thrown instead). */
 function scripted(...answers: (unknown | Error)[]) {
@@ -352,6 +363,21 @@ describe('makeScenario', () => {
     expect(nearer.decisions[0].right.best.text).toBe('word '.repeat(20).trim())
   })
 
+  it('never puts back two rewrites in one answer that end up the same text', () => {
+    const g = answer()
+    const ways = g.decisions[0].right
+    ways.slip.text = 'You yell at the team about the late report today'
+    ways.mistake.text = 'You yell at the manager about the late report now'
+    const slots = [
+      { d: 0, approach: 'right' as const, way: 'slip', target: 10 },
+      { d: 0, approach: 'right' as const, way: 'mistake', target: 10 },
+    ]
+    const same = 'You speak firmly to the team about the late report'
+    const out = applyFixes(g, slots, { texts: [{ id: 't1', text: same }, { id: 't2', text: `${same}!` }] }, { lead: false, slack: 2 })!
+    expect(out.decisions[0].right.slip.text).toBe(same)
+    expect(out.decisions[0].right.mistake.text).toBe(ways.mistake.text)
+  })
+
   it('never puts back a fixed way text that a sibling way\'s why would copy, as in a real run', () => {
     const g = answer()
     const ways = g.decisions[0].right
@@ -369,7 +395,7 @@ describe('makeScenario', () => {
     const lw = longestWins()
     for (const d of lw.decisions) for (const w of ['best', 'slip', 'mistake'] as const) d.right[w].why = 'Because the zulu yankee xray whiskey victor step was skipped.'
     const problems = checkScenario(repairDraft(slotsToDraft(lw, SITUATION)))
-    expect(problems).toEqual([expect.stringMatching(/^picking always the longest averages /)])
+    expect(problems).toEqual([expect.stringMatching(/^picking always the longest averages /), LONGEST_BEST_ALL])
     const fix = versionsCall(lw, problems)
     // Control: a neutral suffix of the same length (32 characters) leaves the way versions usable, and the pick uses some.
     const control = pickVersions(lw, fix.groups, ownVersions(fix.prompt, ' alpha bravo charlie delta hotel'))
@@ -378,10 +404,9 @@ describe('makeScenario', () => {
     expect(rightWays(control!)).not.toEqual(rightWays(lw))
     expect(checkScenario(repairDraft(slotsToDraft(control!, SITUATION)))).toEqual([])
     // With the copied suffix, no right-way version is used.
-    const out = pickVersions(lw, fix.groups, ownVersions(fix.prompt, ' zulu yankee xray whiskey victor'))
-    expect(out).not.toBeNull() // the approach groups alone can still fix it
-    expect(rightWays(out!)).toEqual(rightWays(lw))
-    expect(checkScenario(repairDraft(slotsToDraft(out!, SITUATION)))).toEqual([])
+    // The approach groups alone cannot fix it (the best way stays the longest in all 4 decisions), so with
+    // the same lengths as the control, no mix passes: the guard is what stops it.
+    expect(pickVersions(lw, fix.groups, ownVersions(fix.prompt, ' zulu yankee xray whiskey victor'))).toBeNull()
   })
 
   it('sends a why that copies a sibling way\'s text out to be reworded, and keeps only a reword that copies nothing', () => {
@@ -396,7 +421,8 @@ describe('makeScenario', () => {
     if (fix?.kind !== 'whys') throw new Error(`expected a reword, got ${fix?.kind ?? 'none'}`)
     expect(fix.slots).toEqual([{ d: 1, approach: 'right', way: 'mistake' }])
     const items = JSON.parse(fix.prompt.slice(fix.prompt.indexOf('<reasons>\n') + 10, fix.prompt.indexOf('\n</reasons>')))
-    expect(items).toEqual([{ id: 't1', explains: g.decisions[1].right.mistake.text, reason: g.decisions[1].right.mistake.why, avoid: ['Option 100 for this step', 'Option 101 for this step'] }])
+    expect(items).toEqual([{ id: 't1', explains: g.decisions[1].right.mistake.text, reason: g.decisions[1].right.mistake.why, copies: 'option 101 for this step', avoid: ['Option 100 for this step', 'Option 101 for this step'] }])
+    expect(fix.prompt).toMatch(/"copies" shows the words it repeats now/)
     expect(fix.prompt).toMatch(/Keep what it says about the text it explains: the same cause, any "not"/)
     expect(fix.prompt.slice(0, fix.prompt.indexOf('<reasons>'))).not.toMatch(/best|slip|mistake|blunder/)
     // With the reword used up, the copied why does not block a length fix of the same answer.
@@ -428,19 +454,175 @@ describe('makeScenario', () => {
     expect(rows('generations').map((r) => r.ok)).toEqual([false, true])
   })
 
-  it('falls back to a full retry when the one reword call does not fix the why', async () => {
+  it('tries a second reword before a full retry, as the live runs needed', async () => {
     const g = answer()
     g.decisions[1].right.mistake.why = 'You chose Option 101 for this step too late.'
-    const { writer, kinds } = scripted(g, { texts: [{ id: 't1', text: 'Again Option 101 for this step.' }] }, answer())
+    const { writer, kinds } = scripted(g, { texts: [{ id: 't1', text: 'Again Option 101 for this step.' }] }, { texts: [{ id: 't1', text: 'You moved too late to matter.' }] })
     const { call } = setup(writer)
     expect((await call('user_a')).success).toBe(true)
-    expect(kinds).toEqual(['scenario', 'whys', 'scenario'])
+    expect(kinds).toEqual(['scenario', 'whys', 'whys'])
+  })
+
+  it('falls back to a full retry when both reword calls fail to fix the why', async () => {
+    const g = answer()
+    g.decisions[1].right.mistake.why = 'You chose Option 101 for this step too late.'
+    const bad = { texts: [{ id: 't1', text: 'Again Option 101 for this step.' }] }
+    const { writer, kinds } = scripted(g, bad, bad, answer())
+    const { call } = setup(writer)
+    expect((await call('user_a')).success).toBe(true)
+    expect(kinds).toEqual(['scenario', 'whys', 'whys', 'scenario'])
+  })
+
+  it('sends a text with a flagged word out for a neutral rewrite, and keeps only a rewrite without it', () => {
+    const g = answer()
+    g.decisions[2].wrong.blunder.text = 'Demand 221 for this step'
+    const problems = checkScenario(repairDraft(slotsToDraft(g, SITUATION)))
+    expect(problems).toEqual(['decision 3 approach 3 way 2: uses a word that marks it as a poor choice ("demand")'])
+    expect(isCueProblem(problems[0])).toBe(true)
+    expect(isFixableProblem(problems[0])).toBe(true)
+    expect(isLengthProblem(problems[0])).toBe(false)
+    expect(cuedSlots(g)).toEqual([{ d: 2, approach: 'wrong', way: 'blunder' }])
+    const fix = fixRequest(g, problems)
+    if (fix?.kind !== 'cues') throw new Error(`expected a neutral rewrite, got ${fix?.kind ?? 'none'}`)
+    expect(fix.slots).toEqual([{ d: 2, approach: 'wrong', way: 'blunder', target: 5 }])
+    const items = JSON.parse(fix.prompt.slice(fix.prompt.indexOf('<texts>\n') + 8, fix.prompt.indexOf('\n</texts>')))
+    expect(items).toEqual([{ id: 't1', text: 'Demand 221 for this step', word: 'demand', words: 5 }])
+    // Neutral ids and no grade names, so the call cannot tell which option is which.
+    expect(fix.prompt.slice(0, fix.prompt.indexOf('<texts>'))).not.toMatch(/best|slip|mistake|blunder|worst/)
+    expect(CUES_SYSTEM_PROMPT).not.toMatch(/best|slip|mistake|blunder|worst/)
+    expect(CUES_SYSTEM_PROMPT).toMatch(/a poor choice stays the same choice, only said neutrally/)
+
+    const text = (out: Generated | null) => out!.decisions[2].wrong.blunder.text
+    const apply = (t: string) => text(applyFixes(g, fix.slots, { texts: [{ id: 't1', text: t }] }, { lead: false, slack: 2 }))
+    expect(apply('Demand 221 at this step, firmly')).toBe('Demand 221 for this step') // keeps the word
+    expect(apply('Yell for 221 at this step')).toBe('Demand 221 for this step') // swaps in another flagged word
+    expect(apply('Press for 222 at this step')).toBe('Demand 221 for this step') // changes the number
+    expect(apply('Calmly press for 221 here')).toBe('Demand 221 for this step') // adds a sounds-right word
+    expect(apply('Press hard and keep pressing for 221 at every single step')).toBe('Demand 221 for this step') // too long
+    const good = applyFixes(g, fix.slots, { texts: [{ id: 't1', text: ' Press for 221 at this step ' }] }, { lead: false, slack: 2 })
+    expect(text(good)).toBe('Press for 221 at this step')
+    expect(checkScenario(repairDraft(slotsToDraft(good!, SITUATION)))).toEqual([])
+    expect(g.decisions[2].wrong.blunder.text).toBe('Demand 221 for this step') // the input is not changed
+  })
+
+  it('spends no other fix call on an answer whose flagged word only a neutral rewrite can clear', () => {
+    const g = answer()
+    g.decisions[2].wrong.blunder.text = 'Demand 221 for this step'
+    g.decisions[1].second.slip.text = 'word '.repeat(20).trim()
+    expect(fixRequest(g, [])?.kind).toBe('cues')
+    // With the neutral rewrite used up, the uneven group gets no rewrite first: a full retry is next.
+    expect(fixRequest(g, [], { cues: false })).toBeNull()
+    // A flagged word the checker named but no text shows gets no fix either.
+    expect(fixRequest(answer(), ['decision 1 approach 1: uses a word that marks it as a poor choice ("lie")'])).toBeNull()
+    // A demand letter is a formal step, not a flagged word.
+    const letter = answer()
+    letter.decisions[2].wrong.blunder.text = 'Send a demand letter about 221'
+    expect(cuedSlots(letter)).toEqual([])
+  })
+
+  it('repairs a flagged word with one neutral rewrite, not a full retry, as the failed live run needed', async () => {
+    const g = answer()
+    g.decisions[2].wrong.blunder.text = 'Demand 221 for this step'
+    const { writer, kinds } = scripted(g, { texts: [{ id: 't1', text: 'Press for 221 at this step' }] })
+    const { call, rows } = setup(writer)
+    expect((await call('user_a')).success).toBe(true)
+    expect(kinds).toEqual(['scenario', 'cues'])
+    expect(writer.mock.calls[1][1].system).toBe(CUES_SYSTEM_PROMPT)
+    expect(rows('generations').map((r) => r.ok)).toEqual([false, true])
+  })
+
+  it('falls back to a full retry when the neutral rewrite keeps the flagged word', async () => {
+    const g = answer()
+    g.decisions[2].wrong.blunder.text = 'Demand 221 for this step'
+    const { writer, kinds, prompts } = scripted(g, { texts: [{ id: 't1', text: 'Demand 221 at this step' }] }, answer())
+    const { call } = setup(writer)
+    expect((await call('user_a')).success).toBe(true)
+    expect(kinds).toEqual(['scenario', 'cues', 'scenario'])
+    expect(prompts[2]).toMatch(/uses a word that marks it as a poor choice/)
+  })
+
+  it('cuts an over-long hidden text after its last whole sentence that fits', () => {
+    const first = 'You asked before the deadline, so the landlord had time to act. '.repeat(3).trim() // 191 characters
+    const text = `${first} Dr. Lee then signed it and the repair was booked for the next morning, which ended the matter.`
+    expect(text.length).toBeGreaterThan(LIMITS.why)
+    expect(trimToSentence(text, LIMITS.why)).toBe(first) // never cuts after "Dr."
+    expect(trimToSentence(`  ${first}  `, LIMITS.why)).toBe(first) // already fits: only trimmed
+    // No sentence ending leaves MIN_TRIMMED characters: left as it is, so the length check still refuses it.
+    const stub = `Too short. ${'and then it went on '.repeat(12)}`.trim()
+    expect('Too short.'.length).toBeLessThan(MIN_TRIMMED)
+    expect(trimToSentence(stub, LIMITS.why)).toBe(stub)
+    expect(trimToSentence('x'.repeat(300), LIMITS.why)).toBe('x'.repeat(300))
+  })
+
+  it('never cuts away most of a text, inside a quoted question, or after initials', () => {
+    // The only cut that fits keeps less than TRIM_KEEP_SHARE of the text: left whole, so a retry rewrites it.
+    const most = `You asked the landlord in writing before the deadline, which put the request on record for later. The rest of it ${'keeps going on and on '.repeat(7)}to the end.`
+    expect(most.length).toBeGreaterThan(LIMITS.why)
+    expect(trimToSentence(most, LIMITS.why)).toBe(most)
+    // "?" inside a quote followed by a lowercase word does not end the sentence.
+    const quoted = `${'You told the manager about the shift change early on. '.repeat(2).trim()} You asked "Can we wait?" and then explained the deadline to the whole team clearly. It went fine, and the team agreed to the new plan the same day.`
+    expect(quoted.length).toBeGreaterThan(LIMITS.why)
+    expect(trimToSentence(quoted, LIMITS.why)).toMatch(/clearly\.$/)
+    // A "?" inside a quotation never ends the sentence, with or without the closing quote after it.
+    const lead = 'You told the manager about the shift change early on. '.repeat(3).trim()
+    const inside = `${lead} You wrote "Can we wait? We need the signed approval first." and then sent that same message to the whole team before the meeting.`
+    expect(inside.length).toBeGreaterThan(LIMITS.why)
+    expect(trimToSentence(inside, LIMITS.why)).toBe(inside)
+    const attributed = `${lead} “Can we wait?” Alex asked, and then the team sent the same message to the client before the meeting.`
+    expect(attributed.length).toBeGreaterThan(LIMITS.why)
+    expect(trimToSentence(attributed, LIMITS.why)).toBe(lead)
+    // "U.S." does not end a sentence.
+    const initials = `${'You filed the claim with the right office on time. '.repeat(3).trim()} You wrote to the U.S. Postal Service office and kept the receipt for later.`
+    expect(initials.length).toBeGreaterThan(LIMITS.why)
+    expect(trimToSentence(initials, LIMITS.why)).toMatch(/on time\.$/)
+    expect(TRIM_KEEP_SHARE).toBeGreaterThan(0.5)
+  })
+
+  it('cuts only hidden texts, counts the cuts and leaves its input alone', () => {
+    const g = answer()
+    const long = `${'The repair crew came on time and fixed it. '.repeat(5).trim()} The rest of the week was quiet.`
+    g.decisions[2].right.slip.outcome = long
+    g.flag.why = long
+    g.decisions[0].right.best.text = 'x'.repeat(LIMITS.way + 5) // a choice text is never cut
+    const { answer: out, trimmed } = fitHiddenTexts(g)
+    expect(trimmed).toBe(2)
+    expect(out.decisions[2].right.slip.outcome.length).toBeLessThanOrEqual(LIMITS.outcome)
+    expect(out.decisions[2].right.slip.outcome).toMatch(/fixed it\.$/)
+    expect(out.flag.why.length).toBeLessThanOrEqual(LIMITS.why)
+    expect(out.decisions[0].right.best.text).toBe(g.decisions[0].right.best.text)
+    expect(g.flag.why).toBe(long)
+  })
+
+  it('saves an answer whose hidden texts run a little over, with no retry', async () => {
+    const g = answer()
+    g.decisions[3].right.slip.why = `${'You waited for the reply before you acted on it. '.repeat(4).trim()} Then the deposit came back in full.`
+    g.flag.outcome = g.decisions[3].right.slip.why
+    const { writer, kinds } = scripted(g)
+    const { call } = setup(writer)
+    expect((await call('user_a')).success).toBe(true)
+    expect(kinds).toEqual(['scenario'])
+  })
+
+  it('names problems in the retry by the answer\'s own field names, not positions', async () => {
+    expect(slotFeedback('decision 4 approach 1 way 2 flag reaction outcome is 231 characters, over the 220 limit')).toBe('decision 4 flag.outcome is 231 characters, over the 220 limit')
+    expect(slotFeedback('decision 2 approach 3 way 1 why is 230 characters, over the 220 limit')).toBe('decision 2 wrong.mistake why is 230 characters, over the 220 limit')
+    expect(slotFeedback('decision 1 approach 2: way texts differ too much in length')).toBe('decision 1 second: way texts differ too much in length')
+    expect(slotFeedback('decision 3: approach 1 and approach 3 have the same text')).toBe('decision 3: right and wrong have the same text')
+    expect(slotFeedback('picking always the longest averages 90, more than 10 above random (50)')).toBe('picking always the longest averages 90, more than 10 above random (50)')
+
+    const g = answer()
+    g.decisions[0].second.mistake.text = g.decisions[0].right.best.text
+    const { writer, prompts, kinds } = scripted(g, answer())
+    const { call } = setup(writer)
+    expect((await call('user_a')).success).toBe(true)
+    expect(kinds).toEqual(['scenario', 'scenario'])
+    expect(prompts[1]).toMatch(/decision 1: right\.best and second\.mistake have the same text/)
   })
 
   it('treats the best option being findable by length as a length problem, and asks for three versions of every lead-group text', () => {
     const g = longestWins()
     const problems = checkScenario(repairDraft(slotsToDraft(g, SITUATION)))
-    expect(problems).toEqual([expect.stringMatching(/^picking always the longest averages /)])
+    expect(problems).toEqual([expect.stringMatching(/^picking always the longest averages /), LONGEST_BEST_ALL])
     expect(problems.every(isLengthProblem)).toBe(true)
     expect(isLengthProblem('prefer sounds-right words averages 90, more than 10 above random (52.7)')).toBe(false)
     expect(fixRequest(g)).toBeNull() // nothing to fix unless the rule is named
@@ -461,7 +643,7 @@ describe('makeScenario', () => {
   it('picks a mix of versions measured on the real texts, so a reply in each text own words passes', () => {
     for (const g of [longestWins(), longestByCharacters()]) {
       const problems = checkScenario(repairDraft(slotsToDraft(g, SITUATION)))
-      expect(problems).toEqual([expect.stringMatching(/^picking always the longest averages /)])
+      expect(problems).toEqual([expect.stringMatching(/^picking always the longest averages /), LONGEST_BEST_ALL])
       const fix = versionsCall(g, problems)
       const reply = ownVersions(fix.prompt)
       const before = structuredClone(g)
@@ -589,7 +771,7 @@ describe('makeScenario', () => {
     const reply1 = exactFix(fix1.prompt)
     const g1 = applyFixes(g, fix1.slots, reply1)!
     const second = checkScenario(repairDraft(slotsToDraft(g1, SITUATION)))
-    expect(second).toEqual([expect.stringMatching(/^picking always the longest averages /)])
+    expect(second).toEqual([expect.stringMatching(/^picking always the longest averages /), LONGEST_BEST_ALL])
     const { writer, kinds } = scripted(g, reply1, ownVersions(versionsCall(g1, second).prompt))
     const { call, rows } = setup(writer)
     expect((await call('user_a')).success).toBe(true)
@@ -807,6 +989,12 @@ describe('writeWith', () => {
     expect(await writeWith(new MockLanguageModelV4({ doGenerate: reply(JSON.stringify(texts)) }), request('whys'))).toEqual(texts)
   })
 
+  it('parses a neutral rewrite reply against the rewrite schema', async () => {
+    const texts = { texts: [{ id: 't1', text: 'A neutral option' }] }
+    expect(await writeWith(new MockLanguageModelV4({ doGenerate: reply(JSON.stringify(texts)) }), request('cues'))).toEqual(texts)
+    expect(await writeWith(new MockLanguageModelV4({ doGenerate: reply(JSON.stringify(answer())) }), request('cues'))).toBeNull()
+  })
+
   it('parses a versions reply against its own schema', async () => {
     const versions = { texts: [{ id: 't1', short: 'Short one', medium: 'A medium version', long: 'A somewhat longer version here' }] }
     const texts = { texts: [{ id: 't1', text: 'A rewritten option' }] }
@@ -865,6 +1053,9 @@ describe('repair guards', () => {
     expect(out('Do not refund the $50 order today')).toBe('Do not refund the $40 order today')
     expect(out('Never refund the $40 order today')).toBe('Do not refund the $40 order today')
     expect(out('Do not refund the $40 order right now')).toBe('Do not refund the $40 order right now')
+    // A length rewrite may not bring in a flagged word or a new sounds-right word.
+    expect(out('Do not refund the $40 order, lie')).toBe('Do not refund the $40 order today')
+    expect(out('Do not calmly refund the $40 order')).toBe('Do not refund the $40 order today')
   })
   it('applyWhys drops a reword that flips a no or adds a name', () => {
     const g = answer()
@@ -947,6 +1138,38 @@ describe('keepsDetails', () => {
     expect(keepsDetails(why, 'You moved too late to matter')).toBe(false)
     expect(keepsDetails(why, 'You chose Option 102 too late', { drop: true })).toBe(false)
     expect(keepsDetails(why, 'You did not move in time', { drop: true })).toBe(false)
+  })
+})
+
+describe('longest best way repair', () => {
+  /** The fixture answer with each best way one character longer than its siblings: too short a gap for the length rules, but the best way is the longest in all 4 decisions. */
+  function bestOneLonger(): Generated {
+    const g = answer()
+    for (const d of g.decisions) d.right.best.text += 's'
+    return g
+  }
+
+  it('counts the longest best way as a length problem and fixes it with a versions call over the lead groups', () => {
+    const g = bestOneLonger()
+    const problems = checkScenario(repairDraft(slotsToDraft(g, SITUATION)))
+    const message = 'the best way is the longest of its approach in 4 of 4 decisions, more than 2'
+    expect(problems).toContain(message)
+    expect(isLengthProblem(message)).toBe(true)
+    expect(isFixableProblem(message)).toBe(true)
+    const fix = versionsCall(g, [message])
+    expect(fix.groups.every((group) => group.leads)).toBe(true)
+    expect(fix.groups).toHaveLength(8)
+  })
+
+  it('picks versions that leave the best way longest in at most 2 decisions, and the result passes every check', () => {
+    const g = bestOneLonger()
+    const problems = checkScenario(repairDraft(slotsToDraft(g, SITUATION)))
+    const fix = versionsCall(g, problems)
+    const picked = pickVersions(g, fix.groups, ownVersions(fix.prompt))
+    expect(picked).not.toBeNull()
+    const draft = repairDraft(slotsToDraft(picked!, SITUATION))
+    expect(longestBestCount(draft)).toBeLessThanOrEqual(MAX_LONGEST_BEST)
+    expect(checkScenario(draft)).toEqual([])
   })
 })
 

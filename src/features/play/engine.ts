@@ -61,6 +61,15 @@ export const RANDOM_PLAY = {
 /** No simple guessing rule (always the longest, and so on) may average more than this above random. */
 export const HEURISTIC_MARGIN = 10
 
+/**
+ * At most this many decisions may have a best way strictly longer than both
+ * other ways of its approach. A player who finds the right approach (the easy
+ * step) and then takes the longest way would otherwise beat chance (1 in 3)
+ * by length alone; the length rules above pick the approach by length too, so
+ * they miss this.
+ */
+export const MAX_LONGEST_BEST = 2
+
 /** Sibling texts: the longest at most this many times the shortest, unless they differ by at most LENGTH_SLACK characters. */
 export const LENGTH_RATIO = 1.6
 export const LENGTH_SLACK = 20
@@ -83,6 +92,90 @@ export const CUE_WORDS = [
 ]
 /** Matches any of CUE_WORDS as a whole word. */
 export const CUE_PATTERN = new RegExp(`\\b(${CUE_WORDS.join('|')})\\b`, 'i')
+
+/**
+ * Words that mark an option as plainly bad behaviour (rude, aggressive,
+ * dishonest or vengeful), so a player can rule it out without understanding
+ * the situation. No option may use one. Words that also name sound moves
+ * (refuse, insist, a lawyer, the police, walk away, immediately) are left out.
+ */
+export const WRONG_CUE_WORDS = [
+  'demand',
+  'demands',
+  'demanded',
+  'demanding',
+  'threaten',
+  'threatens',
+  'threatened',
+  'threatening',
+  'yell',
+  'yells',
+  'yelled',
+  'yelling',
+  'shout',
+  'shouts',
+  'shouted',
+  'shouting',
+  'scream',
+  'screams',
+  'screamed',
+  'screaming',
+  'loudly',
+  'angrily',
+  'rudely',
+  'insult',
+  'insults',
+  'insulted',
+  'insulting',
+  'sarcastic',
+  'sarcastically',
+  'mock',
+  'mocks',
+  'mocked',
+  'mocking',
+  'lie',
+  'lies',
+  'lied',
+  'lying',
+  'pretend',
+  'pretends',
+  'pretended',
+  'pretending',
+  'shame',
+  'shamed',
+  'shaming',
+  'revenge',
+  'get even',
+  'got even',
+  'getting even',
+  'publicly',
+]
+
+/**
+ * Sound uses of a cue word that the check lets through, as a lookahead or
+ * lookbehind on that word: a demand letter (a formal step), "lie down" and
+ * "lying low", a mock interview, "it's a shame", publicly thanking or
+ * praising someone (any form of the verb).
+ */
+const LIE_RESTING = '(?!\\s+(?:down|low)\\b)'
+const PUBLIC_PRAISE = '(?!\\s+(?:thank|prais|credit|acknowledg|recogni[sz]|congratulat)\\w*\\b)'
+const CUE_EXCEPTIONS: Record<string, { before?: string; after?: string }> = {
+  demand: { after: '(?![\\s-]+letters?\\b)' },
+  lie: { after: LIE_RESTING },
+  lies: { after: LIE_RESTING },
+  lying: { after: LIE_RESTING },
+  mock: { after: '(?![\\s-]+(?:exams?|tests?|interviews?|trials?)\\b)' },
+  shame: { before: '(?<!\\ba\\s)' },
+  publicly: { after: PUBLIC_PRAISE },
+}
+
+const cueSource = (word: string) => {
+  const ex = CUE_EXCEPTIONS[word] ?? {}
+  return `${ex.before ?? ''}${word.replace(/ /g, '\\s+')}${ex.after ?? ''}`
+}
+
+/** Matches any of WRONG_CUE_WORDS as a whole word, except the sound uses in CUE_EXCEPTIONS; group 1 is the word. */
+export const WRONG_CUE_PATTERN = new RegExp(`\\b(${WRONG_CUE_WORDS.map(cueSource).join('|')})\\b`, 'i')
 
 /** A way's why may not repeat this many consecutive words of a sibling way's text. */
 export const ECHO_WORDS = 5
@@ -458,20 +551,46 @@ export function flagProblems(draft: ScenarioDraft): string[] {
   return problems
 }
 
+/** A text's words, lowercase: letters of any language, digits and apostrophes (curly ones read as straight). */
 function wordsOf(text: string): string[] {
-  return text.toLowerCase().match(/[a-z0-9']+/g) ?? []
+  return text.normalize('NFC').toLowerCase().replace(/[‘’]/g, "'").match(/[\p{L}\p{M}\p{N}']+/gu) ?? []
 }
 
-/** True when `text` repeats ECHO_WORDS or more consecutive words of `source`. */
-export function echoes(text: string, source: string): boolean {
+/** The first run of ECHO_WORDS consecutive words of `source` that `text` repeats (lowercase, punctuation dropped), or null. */
+export function echoedRun(text: string, source: string): string | null {
   const src = wordsOf(source)
   const runs = new Set<string>()
   for (let i = 0; i + ECHO_WORDS <= src.length; i++) runs.add(src.slice(i, i + ECHO_WORDS).join(' '))
   const words = wordsOf(text)
   for (let i = 0; i + ECHO_WORDS <= words.length; i++) {
-    if (runs.has(words.slice(i, i + ECHO_WORDS).join(' '))) return true
+    const run = words.slice(i, i + ECHO_WORDS).join(' ')
+    if (runs.has(run)) return run
   }
-  return false
+  return null
+}
+
+/** True when `text` repeats ECHO_WORDS or more consecutive words of `source`. */
+export function echoes(text: string, source: string): boolean {
+  return echoedRun(text, source) !== null
+}
+
+/** A text's words in order, lowercase, punctuation dropped: two texts with the same key say the same thing word for word. */
+const sameWordsKey = (text: string) => wordsOf(text).join(' ')
+
+/** True when `a` and `b` have the same words (see sameWordsKey). */
+export function sameWords(a: string, b: string): boolean {
+  const key = sameWordsKey(a)
+  return key !== '' && key === sameWordsKey(b)
+}
+
+/** Pairs of positions in `texts` whose words are the same (see sameWordsKey). */
+function duplicatePairs(texts: string[]): [number, number][] {
+  const pairs: [number, number][] = []
+  const keys = texts.map(sameWordsKey)
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) if (keys[i] !== '' && keys[i] === keys[j]) pairs.push([i, j])
+  }
+  return pairs
 }
 
 /** True when sibling texts are similar enough in length (see LENGTH_RATIO). */
@@ -490,18 +609,29 @@ function loneCue(texts: string[], right: number): boolean {
 /**
  * Surface clues that would let a player find the right option without
  * understanding the situation: sibling lengths far apart, a sounds-right word
- * only on the right option, a why that copies a sibling's text, and any
- * simple guessing rule scoring well above random.
+ * only on the right option, a word that marks an option as plainly bad, two
+ * options with the same words, a why that copies a sibling's text, any
+ * simple guessing rule scoring well above random, and a best way that is the
+ * longest of its approach too often (MAX_LONGEST_BEST).
  */
 export function giveawayProblems(draft: ScenarioDraft): string[] {
   const problems: string[] = []
+  const wrongCue = (text: string, where: string) => {
+    const word = WRONG_CUE_PATTERN.exec(text)?.[1]
+    if (word) problems.push(`${where}: uses a word that marks it as a poor choice ("${word.toLowerCase()}")`)
+  }
   draft.decisions.forEach((decision, d) => {
     const at = `decision ${d + 1}`
     const approachTexts = decision.approaches.map((a) => a.text)
     if (!lengthsClose(approachTexts)) problems.push(`${at}: approach texts differ too much in length`)
     const right = decision.approaches.findIndex((a) => a.ways.some((w) => w.grade === 'best'))
     if (loneCue(approachTexts, right)) problems.push(`${at}: only the right approach uses a sounds-right word`)
+    for (const [i, j] of duplicatePairs(approachTexts)) problems.push(`${at}: approach ${i + 1} and approach ${j + 1} have the same text`)
+    const allWays = decision.approaches.flatMap((approach, a) => approach.ways.map((way, w) => ({ text: way.text, where: `approach ${a + 1} way ${w + 1}` })))
+    for (const [i, j] of duplicatePairs(allWays.map((x) => x.text))) problems.push(`${at}: ${allWays[i].where} and ${allWays[j].where} have the same text`)
     decision.approaches.forEach((approach, a) => {
+      wrongCue(approach.text, `${at} approach ${a + 1}`)
+      approach.ways.forEach((way, w) => wrongCue(way.text, `${at} approach ${a + 1} way ${w + 1}`))
       const texts = approach.ways.map((w) => w.text)
       if (!lengthsClose(texts)) problems.push(`${at} approach ${a + 1}: way texts differ too much in length`)
       if (loneCue(texts, approach.ways.findIndex((w) => w.grade === 'best'))) {
@@ -522,7 +652,21 @@ export function giveawayProblems(draft: ScenarioDraft): string[] {
       problems.push(`picking ${name} averages ${got}, more than ${HEURISTIC_MARGIN} above random (${random})`)
     }
   }
+  const longestBest = longestBestCount(draft)
+  if (longestBest > MAX_LONGEST_BEST) {
+    problems.push(`the best way is the longest of its approach in ${longestBest} of ${DECISIONS} decisions, more than ${MAX_LONGEST_BEST}`)
+  }
   return problems
+}
+
+/** How many decisions have a best way strictly longer, in characters, than both other ways of its approach (see MAX_LONGEST_BEST). */
+export function longestBestCount(draft: ScenarioDraft): number {
+  return draft.decisions.filter((decision) =>
+    decision.approaches.some((approach) => {
+      const best = approach.ways.find((w) => w.grade === 'best')
+      return best !== undefined && approach.ways.every((w) => w === best || w.text.length < best.text.length)
+    }),
+  ).length
 }
 
 /** What random play averages on `draft`, and what each guessing rule in HEURISTICS averages, by name. */

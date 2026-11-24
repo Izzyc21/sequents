@@ -27,7 +27,7 @@ const draft: ScenarioDraft = {
               why: 'Unfinished work is easy to send and lets others build on it, while a request for a polished draft invites more delay. A near time and a stated next step make silence count as an answer.',
             },
             {
-              text: 'Ask her privately for the finished draft by Friday noon, and say you will cover it yourselves if nothing comes',
+              text: 'Ask her privately for the finished draft by Friday noon, and say you will cover it yourselves if nothing comes in',
               grade: 'slip',
               outcome:
                 'Dana does not answer. Friday noon leaves two days to write, check and rehearse, and the group has only a promise of a finished section to work from.',

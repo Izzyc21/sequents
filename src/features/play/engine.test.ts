@@ -15,10 +15,12 @@ import {
   giveawayProblems,
   HEURISTICS,
   LENGTH_RULES,
+  longestBestCount,
   mixProblems,
   PATHS,
   repairDraft,
   replay,
+  sameWords,
   scoreRun,
   seededRandom,
   shapeProblems,
@@ -26,6 +28,7 @@ import {
   splitDraft,
   toChoice,
   wayKeysOf,
+  WRONG_CUE_PATTERN,
 } from './engine'
 import { fixture, MIX } from './fixture'
 import type { DraftWay, Grade, ScenarioDraft } from './types'
@@ -179,6 +182,76 @@ describe('checkScenario', () => {
     const echo = fixture()
     echo.decisions[0].approaches[1].ways[1].why = 'Because option 010 for this step was safer.'
     expect(giveawayProblems(echo)).toContain('decision 1 approach 2 way 2: its why copies a sibling way\'s text')
+  })
+
+  it('refuses a best way that is the longest of its approach in more than 2 decisions', () => {
+    const message = 'the best way is the longest of its approach in 3 of 4 decisions, more than 2'
+    const lengthen = (draft: ReturnType<typeof fixture>, d: number) => {
+      draft.decisions[d].approaches[0].ways[0].text += 's'
+    }
+    const two = fixture()
+    lengthen(two, 0)
+    lengthen(two, 1)
+    expect(longestBestCount(two)).toBe(2)
+    expect(giveawayProblems(two)).not.toContain(message)
+
+    const three = fixture()
+    for (const d of [0, 1, 2]) lengthen(three, d)
+    expect(longestBestCount(three)).toBe(3)
+    expect(giveawayProblems(three)).toContain(message)
+
+    // A tie with another way of the approach does not count as longest.
+    three.decisions[2].approaches[0].ways[1].text += 's'
+    expect(longestBestCount(three)).toBe(2)
+    expect(giveawayProblems(three)).not.toContain(message)
+  })
+
+  it('treats a composed and a decomposed accent as the same letter', () => {
+    expect(sameWords('Ask José today', 'Ask Jose\u0301 today')).toBe(true)
+    expect(sameWords('Ask José today', 'Ask Jose today')).toBe(false)
+  })
+
+  it('refuses two options with the same words, across approaches too', () => {
+    const same = fixture()
+    // Case and punctuation do not make two texts different.
+    same.decisions[0].approaches[2].ways[1].text = 'option 000, for this step!'
+    expect(giveawayProblems(same)).toContain('decision 1: approach 1 way 1 and approach 3 way 2 have the same text')
+    same.decisions[1].approaches[1].text = same.decisions[1].approaches[0].text
+    expect(giveawayProblems(same)).toContain('decision 2: approach 1 and approach 2 have the same text')
+  })
+
+  it('refuses an option worded as a poor choice, but not words that name sound moves', () => {
+    const rude = fixture()
+    rude.decisions[2].approaches[1].ways[0].text = 'Loudly do 210 for this step'
+    expect(giveawayProblems(rude)).toContain('decision 3 approach 2 way 1: uses a word that marks it as a poor choice ("loudly")')
+    rude.decisions[2].approaches[2].text = 'Demand a refund at once'
+    expect(giveawayProblems(rude)).toContain('decision 3 approach 3: uses a word that marks it as a poor choice ("demand")')
+    rude.decisions[3].approaches[0].ways[2].text = 'Get even with 302 for this step'
+    expect(giveawayProblems(rude)).toContain('decision 4 approach 1 way 3: uses a word that marks it as a poor choice ("get even")')
+
+    const sound = fixture()
+    sound.decisions[0].approaches[2].text = 'Refuse and insist on a demand letter'
+    sound.decisions[0].approaches[1].text = 'Call the police and walk away now'
+    sound.decisions[0].approaches[0].text = 'Ask a lawyer to check it immediately'
+    expect(giveawayProblems(sound).filter((p) => p.includes('poor choice'))).toEqual([])
+  })
+
+  it('catches past forms of the cue words and lets only the named sound uses through', () => {
+    const flagged = ['You lied about the date', 'Say you threatened to leave', 'Send it after you demanded it', 'Tell them you got even', 'Write a revenge letter', 'Print it on demand letterhead', 'Ask publicly at the meeting', 'Keep lying to the client']
+    for (const text of flagged) expect(WRONG_CUE_PATTERN.test(text), text).toBe(true)
+    const sound = ['Send a demand letter by mail', 'Send two demand-letters', 'Lie down and rest first', 'Lie low until Monday', 'Book a mock interview', "Say it's a shame it happened", 'Publicly thank the team', 'She lies down first', 'Keep lying low for a week', 'Publicly thanked the client', 'Start by publicly praising her work']
+    for (const text of sound) expect(WRONG_CUE_PATTERN.test(text), text).toBe(false)
+  })
+
+  it('reads curly and straight apostrophes as the same, and keeps letters of other languages', () => {
+    const same = fixture()
+    same.decisions[0].approaches[0].ways[0].text = "Say it's done today"
+    same.decisions[0].approaches[1].ways[0].text = 'Say it’s done today'
+    expect(giveawayProblems(same)).toContain('decision 1: approach 1 way 1 and approach 2 way 1 have the same text')
+    const names = fixture()
+    names.decisions[0].approaches[0].ways[0].text = 'Ask José to sign today'
+    names.decisions[0].approaches[1].ways[0].text = 'Ask Jos to sign today'
+    expect(giveawayProblems(names).some((p) => p.includes('have the same text'))).toBe(false)
   })
 
   it('refuses a scenario where always picking the longest option wins', () => {

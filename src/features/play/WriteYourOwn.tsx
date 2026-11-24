@@ -49,7 +49,8 @@ export function WriteYourOwn() {
       </Label>
       <p className="mt-1 text-sm text-muted-foreground">
         Describe a moment you want to rehearse, like "telling my roommate they owe me rent" or "my first client call
-        after a missed deadline".
+        after a missed deadline". Written scenarios are rougher than the ready-made ones: they are easier, their grading
+        can be wrong, and a later moment can assume a choice you did not make.
       </p>
       <Textarea
         id="situation"
