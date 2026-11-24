@@ -81,7 +81,8 @@ export const CUE_WORDS = [
   'appropriately',
   'make sure',
 ]
-const CUE_PATTERN = new RegExp(`\\b(${CUE_WORDS.join('|')})\\b`, 'i')
+/** Matches any of CUE_WORDS as a whole word. */
+export const CUE_PATTERN = new RegExp(`\\b(${CUE_WORDS.join('|')})\\b`, 'i')
 
 /** A way's why may not repeat this many consecutive words of a sibling way's text. */
 export const ECHO_WORDS = 5
@@ -220,9 +221,11 @@ export function bestSingleFix(wayKeys: WayAnswer[][][], choices: number[]): Fix 
  * raised on one branch count only on that branch.
  */
 export function expectedScore(wayKeys: WayAnswer[][][], candidates: (d: number) => number[]): number {
+  // candidates depends only on the decision, so each decision's list is worked out once, not at every branch.
+  const lists: number[][] = []
   const walk = (choices: number[]): number => {
     if (choices.length === DECISIONS) return scoreOf(replay(wayKeys, choices))
-    const options = candidates(choices.length)
+    const options = (lists[choices.length] ??= candidates(choices.length))
     return options.reduce((sum, c) => sum + walk([...choices, c]), 0) / options.length
   }
   return round1(walk([]))
@@ -240,11 +243,18 @@ const shortest: TextRule = (t, all) => t.length === Math.min(...all.map((a) => a
 const middle: TextRule = (t, all) => t.length === all.map((a) => a.length).sort((a, b) => a - b)[1]
 const cued: TextRule = (t) => CUE_PATTERN.test(t)
 
-/** The guessing rules a scenario must not reward (see giveawayProblems). Ties are split evenly. */
-export const HEURISTICS: Record<string, TextRule> = {
+/** The guessing rules that go only by text length in characters. */
+const BY_LENGTH: Record<string, TextRule> = {
   'always the longest': longest,
   'always the shortest': shortest,
   'always the middle length': middle,
+}
+/** Names of the guessing rules in HEURISTICS that go only by length (a length fix can break them). */
+export const LENGTH_RULES: readonly string[] = Object.keys(BY_LENGTH)
+
+/** The guessing rules a scenario must not reward (see giveawayProblems). Ties are split evenly. */
+export const HEURISTICS: Record<string, TextRule> = {
+  ...BY_LENGTH,
   'prefer sounds-right words': cued,
 }
 
@@ -506,15 +516,34 @@ export function giveawayProblems(draft: ScenarioDraft): string[] {
   })
   if (problems.length > 0) return problems
 
-  const wayKeys = wayKeysOf(draft)
-  const random = expectedScore(wayKeys, () => ALL_CHOICES)
-  for (const [name, rule] of Object.entries(HEURISTICS)) {
-    const got = expectedScore(wayKeys, (d) => heuristicChoices(draft, rule, d))
+  const { random, scores } = guessScores(draft)
+  for (const [name, got] of Object.entries(scores)) {
     if (got > random + HEURISTIC_MARGIN) {
       problems.push(`picking ${name} averages ${got}, more than ${HEURISTIC_MARGIN} above random (${random})`)
     }
   }
   return problems
+}
+
+/** What random play averages on `draft`, and what each guessing rule in HEURISTICS averages, by name. */
+export function guessScores(draft: ScenarioDraft): { random: number; scores: Record<string, number> } {
+  return { random: randomScore(draft), scores: ruleScores(draft, Object.keys(HEURISTICS)) }
+}
+
+/**
+ * What random play averages on `draft`. It walks all 6,561 paths, the costly
+ * part of guessScores, and depends only on the grades and flags, not on texts.
+ */
+export function randomScore(draft: ScenarioDraft): number {
+  return expectedScore(wayKeysOf(draft), () => ALL_CHOICES)
+}
+
+/** What each named guessing rule in HEURISTICS averages on `draft`, by name. */
+export function ruleScores(draft: ScenarioDraft, names: readonly string[]): Record<string, number> {
+  const wayKeys = wayKeysOf(draft)
+  const scores: Record<string, number> = {}
+  for (const name of names) scores[name] = expectedScore(wayKeys, (d) => heuristicChoices(draft, HEURISTICS[name], d))
+  return scores
 }
 
 const ALL_CHOICES = Array.from({ length: CHOICES }, (_, i) => i)

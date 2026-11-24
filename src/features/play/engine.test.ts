@@ -13,6 +13,8 @@ import {
   flagProblems,
   fromChoice,
   giveawayProblems,
+  HEURISTICS,
+  LENGTH_RULES,
   mixProblems,
   PATHS,
   repairDraft,
@@ -96,6 +98,17 @@ describe('scoring', () => {
 })
 
 describe('checkScenario', () => {
+  it('names as length rules only guessing rules that exist and go by length alone', () => {
+    expect(LENGTH_RULES.length).toBe(3)
+    for (const name of LENGTH_RULES) {
+      const rule = HEURISTICS[name]
+      expect(rule).toBeTypeOf('function')
+      // Same lengths, different words: a length rule cannot tell them apart.
+      expect(rule('aaaa', ['aaaa', 'bb', 'cccccc'])).toBe(rule('dddd', ['dddd', 'ee', 'ffffff']))
+    }
+    expect(LENGTH_RULES).not.toContain('prefer sounds-right words')
+  })
+
   it('accepts the fixture', () => {
     expect(checkScenario(fixture())).toEqual([])
   })
