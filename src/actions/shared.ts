@@ -17,6 +17,15 @@ export function fail(error: string): ActionResult<never> {
   return { success: false, error }
 }
 
+/**
+ * For a failed record write: logs the storage error for the app's logs and
+ * gives the browser a plain message, so internal error text never reaches it.
+ */
+export function saveFailed(action: string, error: string): ActionResult<never> {
+  console.error(`[action] ${action} write failed: ${error}`)
+  return fail('Something went wrong saving that. Try again.')
+}
+
 export function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
@@ -39,8 +48,9 @@ async function load<T extends Record<string, unknown>>(
 export const loadScenario = (tools: ActionTools, id: string) =>
   load<ScenarioRow & Record<string, unknown>>(tools, 'scenarios', id)
 
-export const loadAnswers = (tools: ActionTools, scenarioId: string) =>
-  load<ScenarioAnswers & Record<string, unknown>>(tools, 'scenario_answers', scenarioId)
+/** Loads a `scenario_answers` row by its recordId (a scenario's or run's `answersId`). */
+export const loadAnswers = (tools: ActionTools, answersId: string) =>
+  load<ScenarioAnswers & Record<string, unknown>>(tools, 'scenario_answers', answersId)
 
 export const loadRun = (tools: ActionTools, id: string) => load<RunRow & Record<string, unknown>>(tools, 'runs', id)
 

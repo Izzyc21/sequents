@@ -20,6 +20,7 @@ export const runsSchema: CollectionSchema = {
     { name: 'parentRunId', storage: 'text', interpretation: 'plain' },
     { name: 'branchAt', storage: 'number', interpretation: 'plain' },
     { name: 'snapshot', storage: 'text', interpretation: { kind: 'json' } },
+    { name: 'answersId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
     { name: 'choices', storage: 'text', interpretation: { kind: 'json' } },
     { name: 'meterHistory', storage: 'text', interpretation: { kind: 'json' } },
     { name: 'outcomes', storage: 'text', interpretation: { kind: 'json' } },

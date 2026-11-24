@@ -108,9 +108,13 @@ function textProblem(label: string, value: unknown, max: number): string | null 
  * Every rule a scenario must pass before it can be played. Returns the
  * problems found; an empty list means the scenario is playable.
  *
- * Beyond shape and limits, it plays all 243 paths so that the choices
- * matter: every best pick must end good, every ok pick ok, every trap bad,
- * and each ending must be reachable on several paths.
+ * Beyond shape and limits, it checks that the choices matter: within each
+ * decision the best option's deltas must sum higher than the ok option's,
+ * and the ok option's higher than the trap's; picking the best option at
+ * every decision must end good, the ok option at every decision ok, and the
+ * trap at every decision bad; and across all 243 paths each ending must be
+ * reached at least MIN_PATHS_PER_ENDING times. It does not promise that one
+ * best pick on a mixed path always helps every meter.
  */
 export function checkScenario(draft: ScenarioDraft): string[] {
   const problems: string[] = []

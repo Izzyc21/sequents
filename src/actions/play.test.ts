@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { ActionResult } from 'deepspace/worker'
+import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { STARTERS } from '../seeds/starters'
 import type { RunRow } from '../features/play/types'
 import { fakeTools } from './fake-tools'
-import { playActions } from './play'
+import { playActions, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
 
 const OWNER = 'user_owner'
 const env = { OWNER_USER_ID: OWNER } as Env
@@ -21,7 +21,7 @@ function caller(store: ReturnType<typeof fakeTools>['store']) {
 async function seeded() {
   const { store } = fakeTools(OWNER)
   const call = caller(store)
-  const res = await call<{ written: number }>('seedStarters', OWNER)
+  const res = await call<{ written: number }>('seedStarters', 'user_a')
   expect(res).toEqual({ success: true, data: { written: 6 } })
   return { store, call }
 }
@@ -30,21 +30,81 @@ const starter = STARTERS[0]
 const pathOf = (kind: string) => starter.scenes.map((s) => s.options.findIndex((o) => o.kind === kind))
 
 describe('seedStarters', () => {
-  it('only does anything for the owner', async () => {
+  it('works for any signed-in user, not only the owner', async () => {
     const { store } = fakeTools('user_a')
     const res = await caller(store)('seedStarters', 'user_a')
-    expect(res).toEqual({ success: true, data: { skipped: true } })
-    expect(store.size).toBe(0)
+    expect(res).toEqual({ success: true, data: { written: 6 } })
+    const row = store.get('scenarios')!.get(starter.id!)!.data
+    expect(row.authorId).toBe('')
   })
 
   it('writes each starter once, then skips until the seed version changes', async () => {
     const { store, call } = await seeded()
     expect(store.get('scenarios')!.size).toBe(6)
     expect(store.get('scenario_answers')!.size).toBe(6)
-    expect(await call('seedStarters', OWNER)).toEqual({ success: true, data: { written: 0 } })
+    expect(await call('seedStarters', 'user_b')).toEqual({ success: true, data: { written: 0 } })
     const row = store.get('scenarios')!.get(starter.id!)!.data
     expect(row.visibility).toBe('public')
+    expect(row.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION))
     expect(JSON.stringify(row)).not.toContain(starter.scenes[0].options[0].why)
+  })
+
+  it('writes a starter again when its answers row is missing', async () => {
+    const { store, call } = await seeded()
+    store.get('scenario_answers')!.delete(starterAnswersId(starter.id!, SEED_VERSION))
+    expect(await call('seedStarters', 'user_a')).toEqual({ success: true, data: { written: 1 } })
+    expect(store.get('scenario_answers')!.has(starterAnswersId(starter.id!, SEED_VERSION))).toBe(true)
+  })
+
+  it('on a new version keeps a hidden starter hidden and old runs on their old answers', async () => {
+    const { store, call } = await seeded()
+    const runId = (await call<{ runId: string }>('startRun', 'user_a', { scenarioId: starter.id })).data!.runId
+    store.get('scenarios')!.get(STARTERS[1].id!)!.data.visibility = 'private'
+
+    // The next version changes the first starter's good ending.
+    const changed = structuredClone(STARTERS)
+    changed[0].endings.good = 'A different good ending.'
+    const { tools } = fakeTools('user_b', store)
+    expect(await seedStarterRows(tools, SEED_VERSION + 1, changed)).toEqual({ success: true, data: { written: 6 } })
+
+    expect(store.get('scenarios')!.get(STARTERS[1].id!)!.data.visibility).toBe('private')
+    expect(store.get('scenarios')!.get(starter.id!)!.data.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION + 1))
+    expect(store.get('scenario_answers')!.size).toBe(12)
+
+    const best = pathOf('best')
+    for (let scene = 0; scene < 5; scene++) await call('choose', 'user_a', { runId, scene, option: best[scene] })
+    const old = store.get('runs')!.get(runId)!.data as unknown as RunRow
+    expect(old.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION))
+    expect(old.endingText).toBe(starter.endings.good)
+
+    const fresh = (await call<{ runId: string }>('startRun', 'user_a', { scenarioId: starter.id })).data!.runId
+    for (let scene = 0; scene < 5; scene++) await call('choose', 'user_a', { runId: fresh, scene, option: best[scene] })
+    expect((store.get('runs')!.get(fresh)!.data as unknown as RunRow).endingText).toBe('A different good ending.')
+  })
+})
+
+describe('startRun', () => {
+  it('refuses a scenario whose answers row is missing', async () => {
+    const { store, call } = await seeded()
+    store.get('scenario_answers')!.delete(starterAnswersId(starter.id!, SEED_VERSION))
+    expect((await call('startRun', 'user_a', { scenarioId: starter.id })).error).toBe('That scenario is not available.')
+  })
+})
+
+describe('save failures', () => {
+  it('give the browser a plain message, never the storage error', async () => {
+    const { store } = await seeded()
+    const { tools } = fakeTools('user_a', store)
+    const broken = { ...tools, create: async () => ({ success: false as const, error: 'SQLITE_FULL: database or disk is full' }) }
+    const res = await playActions.startRun({
+      userId: 'user_a',
+      params: { scenarioId: starter.id },
+      tools: broken as unknown as ActionTools,
+      env,
+      callerJwt: 'jwt',
+    })
+    expect(res.success).toBe(false)
+    expect(res.error).not.toContain('SQLITE')
   })
 })
 

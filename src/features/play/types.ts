@@ -73,6 +73,12 @@ export interface ScenarioRow extends PublicScenario {
   authorId: string
   /** Starters only: bumped when starter text changes so the seed rewrites them. */
   seedVersion: number
+  /**
+   * recordId of the `scenario_answers` row that goes with this readable text.
+   * A starter gets a new answers row per seed version, so a run started on the
+   * old text keeps playing against the old answers.
+   */
+  answersId: string
 }
 
 /** What one option does, as stored in `scenario_answers`. */
@@ -83,7 +89,7 @@ export interface Effect {
   why: string
 }
 
-/** A row of the `scenario_answers` collection (recordId = the scenario's recordId). */
+/** A row of the `scenario_answers` collection (recordId = the scenario's `answersId`). */
 export interface ScenarioAnswers {
   scenarioId: string
   /** effects[scene][option] */
@@ -108,6 +114,8 @@ export interface RunRow {
   branchAt: number
   /** The readable half as it was when the run started, so later edits never change it. */
   snapshot: PublicScenario
+  /** The answers row that matches the snapshot (copied from the scenario at start). */
+  answersId: string
   /** Option index picked at each decision so far. */
   choices: number[]
   /** Meter values: index 0 is the start, index i+1 is after decision i. */

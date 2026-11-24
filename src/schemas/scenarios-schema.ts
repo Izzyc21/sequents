@@ -5,7 +5,9 @@
  * - signed-out visitors and viewers: nothing
  * - member: read public scenarios and their own ('published' = owner OR
  *   visibility is 'public'); change only the visibility of their own
- * - admin: same reads; may change the visibility of any scenario (to hide one)
+ * - admin: the same as member. An update rule cannot be limited to one
+ *   direction, so letting admins hide any scenario would also let them publish
+ *   someone else's private one.
  * - nobody creates or deletes from the browser. Rows are written by the
  *   seedStarters and makeScenario actions, which also write the hidden half,
  *   so a scenario never exists without its answers. No deletes means runs
@@ -32,6 +34,7 @@ export const scenariosSchema: CollectionSchema = {
     { name: 'starter', storage: 'number', interpretation: { kind: 'boolean' } },
     { name: 'authorId', storage: 'text', interpretation: 'plain' },
     { name: 'seedVersion', storage: 'number', interpretation: 'plain' },
+    { name: 'answersId', storage: 'text', interpretation: 'plain' },
   ],
   ownerField: 'authorId',
   // String form: a row is public when data.visibility === 'public'.
@@ -40,6 +43,6 @@ export const scenariosSchema: CollectionSchema = {
     '*': nothing,
     viewer: nothing,
     member: { read: 'published', create: false, update: 'own', delete: false, writableFields: ['visibility'] },
-    admin: { read: 'published', create: false, update: true, delete: false, writableFields: ['visibility'] },
+    admin: { read: 'published', create: false, update: 'own', delete: false, writableFields: ['visibility'] },
   },
 }

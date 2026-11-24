@@ -5,46 +5,68 @@
  * comes through here so the server can check it is legal and apply the
  * hidden meter changes, which the browser never sees ahead of a pick.
  */
-import type { ActionHandler } from 'deepspace/worker'
+import type { ActionHandler, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { applyDelta, endingFor, splitDraft } from '../features/play/engine'
-import { OPTIONS, SCENES, type RunRow, type ScenarioRow } from '../features/play/types'
+import { OPTIONS, SCENES, type RunRow, type ScenarioDraft, type ScenarioRow } from '../features/play/types'
 import { STARTERS } from '../seeds/starters'
-import { canPlay, fail, int, loadAnswers, loadRun, loadScenario, ok, str } from './shared'
+import { canPlay, fail, int, loadAnswers, loadRun, loadScenario, ok, saveFailed, str } from './shared'
 
-/** Bump when starter text changes; the next seed rewrites every starter. */
+/** Bump when starter text changes; the next seed writes a new version of every starter. */
 export const SEED_VERSION = 1
 
-export const playActions: Record<string, ActionHandler<Env>> = {
-  /**
-   * Writes the six starters if they are missing or out of date. Only the app
-   * owner's call does anything (pages call it on load); for everyone else it
-   * returns at once without reading. Answers are written before the readable
-   * row, so a starter never shows up without them.
-   */
-  seedStarters: async ({ userId, tools, env }) => {
-    if (!env.OWNER_USER_ID || userId !== env.OWNER_USER_ID) return ok({ skipped: true })
-    let written = 0
-    for (const draft of STARTERS) {
-      const id = draft.id!
-      const existing = await loadScenario(tools, id)
-      if (existing && existing.seedVersion === SEED_VERSION) continue
-      const { scenario, answers } = splitDraft(draft)
-      const a = await tools.create('scenario_answers', { scenarioId: id, ...answers }, id)
-      if (!a.success) return fail(a.error)
-      const row: ScenarioRow = { ...scenario, visibility: 'public', starter: true, authorId: '', seedVersion: SEED_VERSION }
-      const s = await tools.create('scenarios', { ...row }, id)
-      if (!s.success) return fail(s.error)
-      written++
+/** recordId of a starter's answers for one seed version. */
+export const starterAnswersId = (scenarioId: string, version: number) => `${scenarioId}@v${version}`
+
+/**
+ * Makes sure every starter exists at `version`. Pages call the seedStarters
+ * action on load, for any signed-in user, so the gallery never depends on the
+ * owner visiting first. The text comes from code, so a caller cannot change
+ * it, and starters are owned by nobody (authorId ''), so who triggered the
+ * write gives them no rights over it.
+ *
+ * Each version gets its own answers row, written before the readable row is
+ * pointed at it: a failure in between leaves the old text with the old
+ * answers, and runs already started keep their own answers. A starter the
+ * owner has hidden stays hidden. A starter whose answers row is missing is
+ * written again.
+ */
+export async function seedStarterRows(tools: ActionTools, version: number, starters: ScenarioDraft[]) {
+  let written = 0
+  for (const draft of starters) {
+    const id = draft.id!
+    const answersId = starterAnswersId(id, version)
+    const existing = await loadScenario(tools, id)
+    if (existing && existing.seedVersion === version && (await loadAnswers(tools, answersId))) continue
+    const { scenario, answers } = splitDraft(draft)
+    const a = await tools.create('scenario_answers', { scenarioId: id, ...answers }, answersId)
+    if (!a.success) return saveFailed('seedStarters', a.error)
+    const row: ScenarioRow = {
+      ...scenario,
+      visibility: existing?.visibility ?? 'public',
+      starter: true,
+      authorId: '',
+      seedVersion: version,
+      answersId,
     }
-    return ok({ written })
-  },
+    const s = await tools.create('scenarios', { ...row }, id)
+    if (!s.success) return saveFailed('seedStarters', s.error)
+    written++
+  }
+  return ok({ written })
+}
+
+export const playActions: Record<string, ActionHandler<Env>> = {
+  /** Makes sure the starters exist at the current seed version (see seedStarterRows). */
+  seedStarters: async ({ tools }) => seedStarterRows(tools, SEED_VERSION, STARTERS),
 
   /** Starts a first run of a scenario the caller may play. */
   startRun: async ({ userId, params, tools }) => {
     const scenarioId = str(params.scenarioId)
     const scenario = await loadScenario(tools, scenarioId)
     if (!scenario || !canPlay(scenario, userId)) return fail('That scenario is not available.')
+    // A scenario whose answers are missing could not finish; refuse it up front.
+    if (!(await loadAnswers(tools, scenario.answersId))) return fail('That scenario is not available.')
     const { title, situation, setting, meters, scenes } = scenario
     const run: RunRow = {
       scenarioId,
@@ -52,6 +74,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       parentRunId: '',
       branchAt: -1,
       snapshot: { title, situation, setting, meters, scenes },
+      answersId: scenario.answersId,
       choices: [],
       meterHistory: [meters.map((m) => m.start)],
       outcomes: [],
@@ -61,7 +84,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       debrief: [],
     }
     const res = await tools.create('runs', { ...run })
-    if (!res.success) return fail(res.error)
+    if (!res.success) return saveFailed('startRun', res.error)
     return ok({ runId: res.data.recordId })
   },
 
@@ -70,7 +93,8 @@ export const playActions: Record<string, ActionHandler<Env>> = {
    * the next undecided one, so a double click or a stale tab cannot pick twice.
    * On a rewound run, the decision it was rewound to must differ from the
    * original pick. A run that started may finish even if its scenario was
-   * made private since; its text lives in the run's snapshot.
+   * made private since; its text lives in the run's snapshot and its answers
+   * row never changes.
    */
   choose: async ({ userId, params, tools }) => {
     const runId = str(params.runId)
@@ -87,7 +111,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
         return fail('You picked that last time. Rewinding is for trying a different option.')
       }
     }
-    const answers = await loadAnswers(tools, run.scenarioId)
+    const answers = await loadAnswers(tools, run.answersId)
     if (!answers) return fail('This scenario is missing its answers.')
 
     const effect = answers.effects[scene][option]
@@ -107,7 +131,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       update.debrief = choices.map((c, i) => ({ kind: answers.effects[i][c].kind, why: answers.effects[i][c].why }))
     }
     const res = await tools.update('runs', runId, update)
-    if (!res.success) return fail(res.error)
+    if (!res.success) return saveFailed('choose', res.error)
     return ok({ outcome: effect.outcome, meters, done })
   },
 
@@ -130,6 +154,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       parentRunId: runId,
       branchAt: decision,
       snapshot: run.snapshot,
+      answersId: run.answersId,
       choices: run.choices.slice(0, decision),
       meterHistory: run.meterHistory.slice(0, decision + 1),
       outcomes: run.outcomes.slice(0, decision),
@@ -139,7 +164,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       debrief: [],
     }
     const res = await tools.create('runs', { ...child })
-    if (!res.success) return fail(res.error)
+    if (!res.success) return saveFailed('rewind', res.error)
     return ok({ runId: res.data.recordId })
   },
 }
