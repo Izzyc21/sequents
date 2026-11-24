@@ -3,6 +3,9 @@
  * Like the real tools it ignores permissions; create with a recordId merges
  * into an existing row; query filters by exact match, returns newest first
  * (createdAt, like the platform's default) and honours offset and limit.
+ * Every tool body runs to completion before it returns, so calls that run at
+ * the same time interleave only between tool calls, one operation at a time,
+ * like the platform's record store.
  */
 import type { ActionTools } from 'deepspace/worker'
 
@@ -32,6 +35,10 @@ export function fakeTools(userId: string, store = new Map<string, Map<string, Ro
       const row = table(collection).get(recordId)
       if (!row) return notFound
       row.data = { ...row.data, ...clone(data) }
+      return { success: true as const, data: { recordId } }
+    },
+    async remove(collection: string, recordId: string) {
+      if (!table(collection).delete(recordId)) return notFound
       return { success: true as const, data: { recordId } }
     },
     async get(collection: string, recordId: string) {

@@ -5,11 +5,12 @@
  * each user read public ones and their own. Starting a run goes through the
  * `startRun` action because runs are server-written only. Publishing your own
  * scenario is a plain record write: the schema lets an author change only the
- * `visibility` field of their own rows.
+ * `visibility` field of their own rows. The app owner also sees "Unpublish"
+ * on other players' scenarios (the owner-only `unpublish` action).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth, useMutations, useQuery } from 'deepspace'
+import { useAuth, useMutations, useQuery, useUser } from 'deepspace'
 import { Badge, Button, ConfirmModal, EmptyState, useToast } from '@/components/ui'
 import { ENDING_BADGE, ENDING_LABEL } from '../../../features/play/labels'
 import { runAction } from '../../../features/play/runAction'
@@ -18,11 +19,17 @@ import { WriteYourOwn } from '../../../features/play/WriteYourOwn'
 
 export default function Home() {
   const { userId } = useAuth()
+  const { user } = useUser()
+  const isAdmin = user?.role === 'admin'
   const navigate = useNavigate()
   const toast = useToast()
+  // Everything this user can read (starters, others' public ones, their own),
+  // plus their own in a query of its own so "Yours" never drops off the end
+  // of the shared list as more players publish.
   const { records: scenarios, status } = useQuery<ScenarioRow>('scenarios', { limit: 200 })
+  const { records: own } = useQuery<ScenarioRow>('scenarios', { where: { authorId: userId ?? '' }, limit: 100 })
   const { records: runs } = useQuery<RunRow>('runs', { limit: 12 })
-  const { put, ready } = useMutations<ScenarioRow>('scenarios')
+  const { putConfirmed, ready } = useMutations<ScenarioRow>('scenarios')
   const [starting, setStarting] = useState<string | null>(null)
   const [publishing, setPublishing] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -38,9 +45,9 @@ export default function Home() {
     return {
       starters: scenarios.filter((s) => s.data.starter).sort(byTitle),
       shared: scenarios.filter((s) => !s.data.starter && s.data.authorId !== userId).sort(byTitle),
-      mine: scenarios.filter((s) => !s.data.starter && s.data.authorId === userId).sort(byTitle),
+      mine: own.filter((s) => !s.data.starter).sort(byTitle),
     }
-  }, [scenarios, userId])
+  }, [scenarios, own, userId])
 
   async function start(scenarioId: string) {
     setStarting(scenarioId)
@@ -56,13 +63,27 @@ export default function Home() {
   async function setVisibility(scenarioId: string, visibility: Visibility) {
     setPublishing(scenarioId)
     try {
-      await put(scenarioId, { visibility })
+      // Resolves only once the server has applied the write, and rejects if it
+      // refused it, so the message below is true when it shows.
+      await putConfirmed(scenarioId, { visibility })
       toast.success(visibility === 'public' ? 'Published' : 'Made private')
-    } catch (e) {
-      toast.error('Could not change that', (e as Error).message)
+    } catch {
+      toast.error('Could not change that', 'The change may not have been saved. Check the card and try again.')
     } finally {
       setPublishing(null)
       setConfirmId(null)
+    }
+  }
+
+  async function unpublish(scenarioId: string) {
+    setPublishing(scenarioId)
+    try {
+      await runAction('unpublish', { scenarioId })
+      toast.success('Unpublished')
+    } catch (e) {
+      toast.error('Could not unpublish', (e as Error).message)
+    } finally {
+      setPublishing(null)
     }
   }
 
@@ -90,6 +111,17 @@ export default function Home() {
             onClick={() => (s.data.visibility === 'public' ? setVisibility(s.recordId, 'private') : setConfirmId(s.recordId))}
           >
             {s.data.visibility === 'public' ? 'Make private' : 'Publish'}
+          </Button>
+        )}
+        {isAdmin && !s.data.starter && s.data.authorId !== userId && s.data.visibility === 'public' && (
+          <Button
+            size="sm"
+            variant="outline"
+            loading={publishing === s.recordId}
+            disabled={publishing !== null}
+            onClick={() => unpublish(s.recordId)}
+          >
+            Unpublish
           </Button>
         )}
       </div>

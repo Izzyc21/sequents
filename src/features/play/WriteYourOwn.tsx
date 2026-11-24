@@ -6,10 +6,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Label, Textarea, useToast } from '@/components/ui'
+import { LIMITS, SITUATION_MIN } from './engine'
 import { runAction } from './runAction'
 
-const MIN = 10
-const MAX = 400
+const MIN = SITUATION_MIN
+const MAX = LIMITS.situation
 
 export function WriteYourOwn() {
   const navigate = useNavigate()
@@ -21,12 +22,22 @@ export function WriteYourOwn() {
 
   async function write() {
     setBusy(true)
+    let scenarioId: string
     try {
-      const { scenarioId } = await runAction<{ scenarioId: string }>('makeScenario', { situation })
+      ;({ scenarioId } = await runAction<{ scenarioId: string }>('makeScenario', { situation }))
+    } catch (e) {
+      toast.error('Could not write that one', (e as Error).message)
+      setBusy(false)
+      return
+    }
+    // The scenario is saved from here on, so a failure to start it must not
+    // look like a failed write (that would invite a second, billed write).
+    try {
       const { runId } = await runAction<{ runId: string }>('startRun', { scenarioId })
       navigate(`/run/${runId}`)
     } catch (e) {
-      toast.error('Could not write that one', (e as Error).message)
+      toast.error('Saved under "Yours", but it could not start', (e as Error).message)
+      setSituation('')
       setBusy(false)
     }
   }
@@ -55,7 +66,7 @@ export function WriteYourOwn() {
           Your text is sent to Claude (Anthropic) to write the scenario. Leave out private details. {length}/{MAX}
         </p>
         <Button size="sm" loading={busy} disabled={!valid || busy} onClick={write}>
-          {busy ? 'Writing (up to a minute)…' : 'Write and play'}
+          {busy ? 'Writing (can take a minute)…' : 'Write and play'}
         </Button>
       </div>
     </section>

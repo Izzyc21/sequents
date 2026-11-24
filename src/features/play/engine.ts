@@ -39,6 +39,9 @@ export const LIMITS = {
   ending: 600,
 } as const
 
+/** Shortest situation the "write your own" box accepts (the longest is LIMITS.situation). */
+export const SITUATION_MIN = 10
+
 export function clampMeter(value: number): number {
   return Math.max(METER_MIN, Math.min(METER_MAX, value))
 }
