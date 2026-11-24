@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canRead, canUpdate, checkFieldPermissions, lintSchemas } from 'deepspace/worker'
+import { canRead, canUpdate, lintSchemas } from 'deepspace/worker'
 import { schemas } from './schemas'
 import { scenariosSchema } from './schemas/scenarios-schema'
 import { scenarioAnswersSchema } from './schemas/scenario-answers-schema'
@@ -42,12 +42,11 @@ describe('scenarios', () => {
     for (const role of ROLES) expect(canUpdate(scenariosSchema, role, starter, 'user_seeder')).toBe(false)
   })
 
-  it('lets only the author change their own scenario, and only its visibility', () => {
-    expect(canUpdate(scenariosSchema, 'member', hers, 'user_a')).toBe(true)
-    expect(canUpdate(scenariosSchema, 'member', hers, 'user_b')).toBe(false)
-    expect(canUpdate(scenariosSchema, 'admin', hers, 'user_b')).toBe(false)
-    expect(checkFieldPermissions(scenariosSchema, 'member', { visibility: 'public' }, hers.data)).toBeNull()
-    expect(checkFieldPermissions(scenariosSchema, 'member', { title: 'x' }, hers.data)).not.toBeNull()
+  it('lets nobody change a scenario from the browser, the author included (visibility goes through actions)', () => {
+    for (const role of ROLES) {
+      expect(canUpdate(scenariosSchema, role, hers, 'user_a')).toBe(false)
+      expect(canUpdate(scenariosSchema, role, hers, 'user_b')).toBe(false)
+    }
   })
 })
 

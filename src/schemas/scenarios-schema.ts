@@ -3,15 +3,14 @@
  *
  * Who can do what (enforced by DeepSpace on the server, not in the UI):
  * - signed-out visitors and viewers: nothing
- * - member: read public scenarios and their own ('published' = owner OR
- *   visibility is 'public'); change only the visibility of their own
- * - admin: the same as member. An update rule cannot be limited to one
- *   direction, so letting admins hide any scenario would also let them publish
- *   someone else's private one.
- * - nobody creates or deletes from the browser. Rows are written by the
- *   seedStarters and makeScenario actions, which also write the hidden half,
- *   so a scenario never exists without its answers. No deletes means runs
- *   that point at a scenario never lose it.
+ * - member and admin: read public scenarios and their own ('published' =
+ *   owner OR visibility is 'public')
+ * - nobody creates, changes or deletes from the browser. Rows are written by
+ *   the seedStarters and makeScenario actions, which also write the hidden
+ *   half, so a scenario never exists without its answers. Publishing goes
+ *   through the setVisibility action so an owner takedown sticks (see
+ *   actions/visibility.ts). No deletes means runs that point at a scenario
+ *   never lose it.
  */
 import type { CollectionSchema } from 'deepspace/schema'
 
@@ -35,6 +34,8 @@ export const scenariosSchema: CollectionSchema = {
     { name: 'authorId', storage: 'text', interpretation: 'plain' },
     { name: 'seedVersion', storage: 'number', interpretation: 'plain' },
     { name: 'answersId', storage: 'text', interpretation: 'plain', required: true },
+    // Set by the owner's unpublish action; setVisibility then refuses 'public'.
+    { name: 'takenDown', storage: 'number', interpretation: { kind: 'boolean' } },
   ],
   ownerField: 'authorId',
   // String form: a row is public when data.visibility === 'public'.
@@ -42,7 +43,7 @@ export const scenariosSchema: CollectionSchema = {
   permissions: {
     '*': nothing,
     viewer: nothing,
-    member: { read: 'published', create: false, update: 'own', delete: false, writableFields: ['visibility'] },
-    admin: { read: 'published', create: false, update: 'own', delete: false, writableFields: ['visibility'] },
+    member: { read: 'published', create: false, update: false, delete: false },
+    admin: { read: 'published', create: false, update: false, delete: false },
   },
 }

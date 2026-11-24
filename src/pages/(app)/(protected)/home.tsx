@@ -3,14 +3,15 @@
  *
  * Scenarios come live from the `scenarios` collection; the schema only lets
  * each user read public ones and their own. Starting a run goes through the
- * `startRun` action because runs are server-written only. Publishing your own
- * scenario is a plain record write: the schema lets an author change only the
- * `visibility` field of their own rows. The app owner also sees "Unpublish"
- * on other players' scenarios (the owner-only `unpublish` action).
+ * `startRun` action because runs are server-written only. Publishing or
+ * hiding your own scenario goes through the `setVisibility` action, so a
+ * scenario the app owner took down cannot be published again. The app owner
+ * also sees "Unpublish" on other players' scenarios (the owner-only
+ * `unpublish` action).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth, useMutations, useQuery, useUser } from 'deepspace'
+import { useAuth, useQuery, useUser } from 'deepspace'
 import { Badge, Button, ConfirmModal, EmptyState, useToast } from '@/components/ui'
 import { ENDING_BADGE, ENDING_LABEL } from '../../../features/play/labels'
 import { runAction } from '../../../features/play/runAction'
@@ -29,7 +30,6 @@ export default function Home() {
   const { records: scenarios, status } = useQuery<ScenarioRow>('scenarios', { limit: 200 })
   const { records: own } = useQuery<ScenarioRow>('scenarios', { where: { authorId: userId ?? '' }, limit: 100 })
   const { records: runs } = useQuery<RunRow>('runs', { limit: 12 })
-  const { putConfirmed, ready } = useMutations<ScenarioRow>('scenarios')
   const [starting, setStarting] = useState<string | null>(null)
   const [publishing, setPublishing] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -63,12 +63,12 @@ export default function Home() {
   async function setVisibility(scenarioId: string, visibility: Visibility) {
     setPublishing(scenarioId)
     try {
-      // Resolves only once the server has applied the write, and rejects if it
-      // refused it, so the message below is true when it shows.
-      await putConfirmed(scenarioId, { visibility })
+      // The action resolves only once the server has saved the change, and
+      // rejects with the reason if it refused, so the message is true when shown.
+      await runAction('setVisibility', { scenarioId, visibility })
       toast.success(visibility === 'public' ? 'Published' : 'Made private')
-    } catch {
-      toast.error('Could not change that', 'The change may not have been saved. Check the card and try again.')
+    } catch (e) {
+      toast.error('Could not change that', (e as Error).message)
     } finally {
       setPublishing(null)
       setConfirmId(null)
@@ -102,12 +102,17 @@ export default function Home() {
         <Button className="flex-1" size="sm" loading={starting === s.recordId} disabled={starting !== null} onClick={() => start(s.recordId)}>
           Start
         </Button>
-        {!s.data.starter && s.data.authorId === userId && (
+        {!s.data.starter && s.data.authorId === userId && s.data.takenDown && s.data.visibility !== 'public' && (
+          <Badge variant="secondary" data-testid="taken-down">
+            Taken down
+          </Badge>
+        )}
+        {!s.data.starter && s.data.authorId === userId && !(s.data.takenDown && s.data.visibility !== 'public') && (
           <Button
             size="sm"
             variant="outline"
             loading={publishing === s.recordId}
-            disabled={!ready || publishing !== null}
+            disabled={publishing !== null}
             onClick={() => (s.data.visibility === 'public' ? setVisibility(s.recordId, 'private') : setConfirmId(s.recordId))}
           >
             {s.data.visibility === 'public' ? 'Make private' : 'Publish'}

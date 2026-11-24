@@ -276,8 +276,9 @@ export function makeGenerateActions(writer: ScenarioWriter): Record<string, Acti
         }
         const s = await tools.create('scenarios', { ...row }, id)
         if (!s.success) return saveFailed('makeScenario', s.error)
-        // Best effort: the row already counts toward the caps either way.
-        await tools.update('generations', claim.id, { ok: true })
+        // Best effort: the scenario is already saved, so a failed ledger note
+        // must not turn a success into an error (the row still counts).
+        await tools.update('generations', claim.id, { ok: true }).catch(() => undefined)
         return ok({ scenarioId: id })
       }
       return fail(NOT_PLAYABLE)

@@ -79,6 +79,8 @@ export interface ScenarioRow extends PublicScenario {
    * old text keeps playing against the old answers.
    */
   answersId: string
+  /** Set when the app owner took it down; the author can no longer publish it. */
+  takenDown?: boolean
 }
 
 /** What one option does, as stored in `scenario_answers`. */
