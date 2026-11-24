@@ -1,11 +1,12 @@
 /**
  * In-memory stand-in for the record tools an action receives, for unit tests.
  * Like the real tools it ignores permissions; create with a recordId merges
- * into an existing row, query filters by exact match and honours limit.
+ * into an existing row; query filters by exact match, returns newest first
+ * (createdAt, like the platform's default) and honours offset and limit.
  */
 import type { ActionTools } from 'deepspace/worker'
 
-type Row = { recordId: string; createdBy: string; data: Record<string, unknown> }
+type Row = { recordId: string; createdBy: string; createdAt: string; data: Record<string, unknown> }
 
 export function fakeTools(userId: string, store = new Map<string, Map<string, Row>>()) {
   const table = (name: string) => {
@@ -22,6 +23,7 @@ export function fakeTools(userId: string, store = new Map<string, Map<string, Ro
       table(collection).set(id, {
         recordId: id,
         createdBy: existing?.createdBy ?? userId,
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
         data: { ...existing?.data, ...clone(data) },
       })
       return { success: true as const, data: { recordId: id } }
@@ -36,16 +38,20 @@ export function fakeTools(userId: string, store = new Map<string, Map<string, Ro
       const row = table(collection).get(recordId)
       return row ? { success: true as const, data: { record: clone(row) } } : notFound
     },
-    async query(collection: string, options: { where?: Record<string, unknown>; limit?: number } = {}) {
+    async query(
+      collection: string,
+      options: { where?: Record<string, unknown>; orderDir?: 'asc' | 'desc'; limit?: number; offset?: number } = {},
+    ) {
       const where = options.where ?? {}
-      const records = [...table(collection).values()]
-        .filter((r) =>
-          Object.entries(where).every(([k, v]) =>
-            k === 'recordId' ? r.recordId === v : k === 'createdBy' ? r.createdBy === v : r.data[k] === v,
-          ),
-        )
-        .slice(0, options.limit ?? 50)
-        .map(clone)
+      // Map keeps insertion order, which is creation order here.
+      const matching = [...table(collection).values()].filter((r) =>
+        Object.entries(where).every(([k, v]) =>
+          k === 'recordId' ? r.recordId === v : k === 'createdBy' ? r.createdBy === v : r.data[k] === v,
+        ),
+      )
+      if (options.orderDir !== 'asc') matching.reverse()
+      const offset = options.offset ?? 0
+      const records = matching.slice(offset, offset + (options.limit ?? 50)).map(clone)
       return { success: true as const, data: { records, count: records.length } }
     },
   }

@@ -1,13 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { STARTERS } from '../seeds/starters'
 import type { RunRow } from '../features/play/types'
 import { fakeTools } from './fake-tools'
-import { playActions, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
+import { playActions, resetSeedCache, RUNS_PER_DAY, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
 
 const OWNER = 'user_owner'
 const env = { OWNER_USER_ID: OWNER } as Env
+
+beforeEach(() => resetSeedCache())
 
 /** Calls an action as `userId` against a shared in-memory store. */
 function caller(store: ReturnType<typeof fakeTools>['store']) {
@@ -42,7 +44,8 @@ describe('seedStarters', () => {
     const { store, call } = await seeded()
     expect(store.get('scenarios')!.size).toBe(6)
     expect(store.get('scenario_answers')!.size).toBe(6)
-    expect(await call('seedStarters', 'user_b')).toEqual({ success: true, data: { written: 0 } })
+    const { tools } = fakeTools('user_b', store)
+    expect(await seedStarterRows(tools, SEED_VERSION, STARTERS)).toEqual({ success: true, data: { written: 0 } })
     const row = store.get('scenarios')!.get(starter.id!)!.data
     expect(row.visibility).toBe('public')
     expect(row.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION))
@@ -52,11 +55,40 @@ describe('seedStarters', () => {
   it('writes a starter again when its answers row is missing', async () => {
     const { store, call } = await seeded()
     store.get('scenario_answers')!.delete(starterAnswersId(starter.id!, SEED_VERSION))
+    resetSeedCache()
     expect(await call('seedStarters', 'user_a')).toEqual({ success: true, data: { written: 1 } })
     expect(store.get('scenario_answers')!.has(starterAnswersId(starter.id!, SEED_VERSION))).toBe(true)
   })
 
-  it('on a new version keeps a hidden starter hidden and old runs on their old answers', async () => {
+  it('writes a starter again when it points at other answers at the same version', async () => {
+    const { store } = await seeded()
+    store.get('scenarios')!.get(starter.id!)!.data.answersId = 'someone_elses_answers'
+    const { tools } = fakeTools('user_a', store)
+    expect(await seedStarterRows(tools, SEED_VERSION, STARTERS)).toEqual({ success: true, data: { written: 1 } })
+    expect(store.get('scenarios')!.get(starter.id!)!.data.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION))
+  })
+
+  it('never writes an older version over a newer one', async () => {
+    const { store } = fakeTools('user_a')
+    const { tools } = fakeTools('user_a', store)
+    await seedStarterRows(tools, SEED_VERSION + 1, STARTERS)
+    expect(await seedStarterRows(tools, SEED_VERSION, STARTERS)).toEqual({ success: true, data: { written: 0 } })
+    const row = store.get('scenarios')!.get(starter.id!)!.data
+    expect(row.seedVersion).toBe(SEED_VERSION + 1)
+    expect(row.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION + 1))
+  })
+
+  it('after one success in this worker instance, later calls read nothing', async () => {
+    const { store } = await seeded()
+    const { tools } = fakeTools('user_b', store)
+    let reads = 0
+    const counting = { ...tools, get: async (...a: Parameters<ActionTools['get']>) => (reads++, tools.get(...a)) }
+    const res = await playActions.seedStarters({ userId: 'user_b', params: {}, tools: counting as ActionTools, env, callerJwt: 'jwt' })
+    expect(res).toEqual({ success: true, data: { written: 0 } })
+    expect(reads).toBe(0)
+  })
+
+  it('on a new version makes every starter public and keeps old runs on their old answers', async () => {
     const { store, call } = await seeded()
     const runId = (await call<{ runId: string }>('startRun', 'user_a', { scenarioId: starter.id })).data!.runId
     store.get('scenarios')!.get(STARTERS[1].id!)!.data.visibility = 'private'
@@ -67,7 +99,7 @@ describe('seedStarters', () => {
     const { tools } = fakeTools('user_b', store)
     expect(await seedStarterRows(tools, SEED_VERSION + 1, changed)).toEqual({ success: true, data: { written: 6 } })
 
-    expect(store.get('scenarios')!.get(STARTERS[1].id!)!.data.visibility).toBe('private')
+    expect(store.get('scenarios')!.get(STARTERS[1].id!)!.data.visibility).toBe('public')
     expect(store.get('scenarios')!.get(starter.id!)!.data.answersId).toBe(starterAnswersId(starter.id!, SEED_VERSION + 1))
     expect(store.get('scenario_answers')!.size).toBe(12)
 
@@ -88,6 +120,55 @@ describe('startRun', () => {
     const { store, call } = await seeded()
     store.get('scenario_answers')!.delete(starterAnswersId(starter.id!, SEED_VERSION))
     expect((await call('startRun', 'user_a', { scenarioId: starter.id })).error).toBe('That scenario is not available.')
+  })
+})
+
+describe('runs per player per day', () => {
+  /** Starts `n` runs for `userId` and returns the last run's id. */
+  async function startMany(call: ReturnType<typeof caller>, userId: string, n: number) {
+    let last = ''
+    for (let i = 0; i < n; i++) {
+      const res = await call<{ runId: string }>('startRun', userId, { scenarioId: starter.id })
+      expect(res.success).toBe(true)
+      last = res.data!.runId
+    }
+    return last
+  }
+
+  it(`refuses a new run or a rewind after ${RUNS_PER_DAY} runs in 24 hours, for that player only`, async () => {
+    const { call } = await seeded()
+    const runId = await startMany(call, 'user_a', 1)
+    for (let scene = 0; scene < 5; scene++) await call('choose', 'user_a', { runId, scene, option: 0 })
+    await startMany(call, 'user_a', RUNS_PER_DAY - 1)
+
+    const again = await call('startRun', 'user_a', { scenarioId: starter.id })
+    expect(again.success).toBe(false)
+    expect(again.error).toContain(`${RUNS_PER_DAY} runs`)
+    expect((await call('rewind', 'user_a', { runId, decision: 1 })).success).toBe(false)
+    expect((await call('startRun', 'user_b', { scenarioId: starter.id })).success).toBe(true)
+  })
+
+  it('lets the player start again once their oldest counted run is over 24 hours old', async () => {
+    const { store, call } = await seeded()
+    await startMany(call, 'user_a', RUNS_PER_DAY)
+    expect((await call('startRun', 'user_a', { scenarioId: starter.id })).success).toBe(false)
+    const oldest = [...store.get('runs')!.values()][0]
+    oldest.createdAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
+    expect((await call('startRun', 'user_a', { scenarioId: starter.id })).success).toBe(true)
+  })
+
+  it('refuses when the run count cannot be read', async () => {
+    const { store } = await seeded()
+    const { tools } = fakeTools('user_a', store)
+    const broken = { ...tools, query: async () => ({ success: false as const, error: 'down' }) }
+    const res = await playActions.startRun({
+      userId: 'user_a',
+      params: { scenarioId: starter.id },
+      tools: broken as unknown as ActionTools,
+      env,
+      callerJwt: 'jwt',
+    })
+    expect(res.success).toBe(false)
   })
 })
 

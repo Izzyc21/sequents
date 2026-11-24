@@ -24,6 +24,7 @@
     "test:unit": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "validate": "tsc --noEmit && vitest run --passWithNoTests",
+    "verify": "vite build && tsc --noEmit && eslint . && REQUIRE_BUNDLE=1 vitest run",
     "screenshot": "deepspace test screenshot",
     "type-check": "tsc --noEmit",
     "lint": "eslint ."

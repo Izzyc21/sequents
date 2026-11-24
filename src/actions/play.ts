@@ -12,6 +12,29 @@ import { OPTIONS, SCENES, type RunRow, type ScenarioDraft, type ScenarioRow } fr
 import { STARTERS } from '../seeds/starters'
 import { canPlay, fail, int, loadAnswers, loadRun, loadScenario, ok, saveFailed, str } from './shared'
 
+/** Most runs (first runs and rewinds together) one player may start in any 24 hours. */
+export const RUNS_PER_DAY = 100
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * True when `userId` has started RUNS_PER_DAY runs in the last 24 hours. It
+ * reads one row, the player's RUNS_PER_DAY-th newest run, and checks its
+ * creation time (an ISO string the platform stamps). A failed read or a time
+ * that does not parse counts as over the limit, so the check never lets runs
+ * through by failing.
+ */
+export async function overRunLimit(tools: ActionTools, userId: string): Promise<boolean> {
+  // `offset` is accepted by the records.query tool though ActionTools' type leaves it out.
+  const options = { where: { playerId: userId }, orderBy: 'createdAt', orderDir: 'desc', limit: 1, offset: RUNS_PER_DAY - 1 }
+  const res = await tools.query('runs', options as Parameters<ActionTools['query']>[1])
+  if (!res.success) return true
+  const nth = res.data.records[0]
+  if (!nth) return false
+  return !(Date.now() - Date.parse(nth.createdAt) >= DAY_MS)
+}
+
+const RUN_LIMIT_MESSAGE = `You have started ${RUNS_PER_DAY} runs in the last 24 hours. Try again later.`
+
 /** Bump when starter text changes; the next seed writes a new version of every starter. */
 export const SEED_VERSION = 1
 
@@ -27,9 +50,11 @@ export const starterAnswersId = (scenarioId: string, version: number) => `${scen
  *
  * Each version gets its own answers row, written before the readable row is
  * pointed at it: a failure in between leaves the old text with the old
- * answers, and runs already started keep their own answers. A starter the
- * owner has hidden stays hidden. A starter whose answers row is missing is
- * written again.
+ * answers, and runs already started keep their own answers. Versions only move
+ * forward: a worker still running older code never writes an older version
+ * over a newer one. A starter is skipped only when it is at this version,
+ * points at this version's answers and those answers exist; otherwise it is
+ * written again. Starters are always public.
  */
 export async function seedStarterRows(tools: ActionTools, version: number, starters: ScenarioDraft[]) {
   let written = 0
@@ -37,13 +62,16 @@ export async function seedStarterRows(tools: ActionTools, version: number, start
     const id = draft.id!
     const answersId = starterAnswersId(id, version)
     const existing = await loadScenario(tools, id)
-    if (existing && existing.seedVersion === version && (await loadAnswers(tools, answersId))) continue
+    if (existing && (existing.seedVersion ?? 0) > version) continue
+    if (existing && existing.seedVersion === version && existing.answersId === answersId && (await loadAnswers(tools, answersId))) {
+      continue
+    }
     const { scenario, answers } = splitDraft(draft)
     const a = await tools.create('scenario_answers', { scenarioId: id, ...answers }, answersId)
     if (!a.success) return saveFailed('seedStarters', a.error)
     const row: ScenarioRow = {
       ...scenario,
-      visibility: existing?.visibility ?? 'public',
+      visibility: 'public',
       starter: true,
       authorId: '',
       seedVersion: version,
@@ -56,9 +84,26 @@ export async function seedStarterRows(tools: ActionTools, version: number, start
   return ok({ written })
 }
 
+/**
+ * The seed version this worker instance has already confirmed, so page loads
+ * after the first skip the twelve reads. Each instance checks once; a new
+ * deploy starts new instances.
+ */
+let seededInThisInstance = 0
+
+/** For tests: forget that this instance has seeded. */
+export function resetSeedCache() {
+  seededInThisInstance = 0
+}
+
 export const playActions: Record<string, ActionHandler<Env>> = {
   /** Makes sure the starters exist at the current seed version (see seedStarterRows). */
-  seedStarters: async ({ tools }) => seedStarterRows(tools, SEED_VERSION, STARTERS),
+  seedStarters: async ({ tools }) => {
+    if (seededInThisInstance >= SEED_VERSION) return ok({ written: 0 })
+    const res = await seedStarterRows(tools, SEED_VERSION, STARTERS)
+    if (res.success) seededInThisInstance = SEED_VERSION
+    return res
+  },
 
   /** Starts a first run of a scenario the caller may play. */
   startRun: async ({ userId, params, tools }) => {
@@ -67,6 +112,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     if (!scenario || !canPlay(scenario, userId)) return fail('That scenario is not available.')
     // A scenario whose answers are missing could not finish; refuse it up front.
     if (!(await loadAnswers(tools, scenario.answersId))) return fail('That scenario is not available.')
+    if (await overRunLimit(tools, userId)) return fail(RUN_LIMIT_MESSAGE)
     const { title, situation, setting, meters, scenes } = scenario
     const run: RunRow = {
       scenarioId,
@@ -148,6 +194,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     if (decision === null || decision < 0 || decision >= SCENES) return fail('Pick a decision to rewind to.')
     const scenario = await loadScenario(tools, run.scenarioId)
     if (!scenario || !canPlay(scenario, userId)) return fail('This scenario is no longer available.')
+    if (await overRunLimit(tools, userId)) return fail(RUN_LIMIT_MESSAGE)
     const child: RunRow = {
       scenarioId: run.scenarioId,
       playerId: userId,

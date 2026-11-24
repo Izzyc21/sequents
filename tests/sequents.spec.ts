@@ -13,8 +13,10 @@
  *      decision, and the comparison shows where the runs split.
  *   3. The hidden half of a scenario never reaches the browser early: no
  *      "why" or ending text of the scenario being played arrives in any
- *      WebSocket frame or HTTP response before the last pick, and no hidden
- *      text of any other starter arrives at all.
+ *      WebSocket frame or HTTP response before the last pick; the outcome of
+ *      an option nobody picked never arrives; no data message carries the
+ *      hidden "delta" or "effects" fields; and no hidden text of any other
+ *      starter arrives at all.
  *   4. Another player cannot open someone else's run.
  */
 import type { Page } from '@playwright/test'
@@ -46,9 +48,11 @@ type Received = { from: string; text: string }
 
 /**
  * A finished run rightly carries its debrief and ending, and test accounts
- * keep their runs from earlier sessions, so finished runs are dropped from a
- * received message before it is searched.
+ * keep their runs from earlier sessions, so the player's own finished runs are
+ * dropped from a received message before it is searched. Anyone else's
+ * finished run is kept, so it would count as a leak.
  */
+let ownPlayerId = ''
 function withoutFinishedRuns(text: string): string {
   let parsed: unknown
   try {
@@ -61,7 +65,7 @@ function withoutFinishedRuns(text: string): string {
     if (!v || typeof v !== 'object') return v
     const o = v as Record<string, unknown>
     const data = o.data as Record<string, unknown> | undefined
-    if (data && data.status === 'done' && typeof data.playerId === 'string') return null
+    if (data && data.status === 'done' && ownPlayerId && data.playerId === ownPlayerId) return null
     return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, strip(x)]))
   }
   return JSON.stringify(strip(parsed))
@@ -72,6 +76,13 @@ const leaks = (received: Received[], secrets: string[]) =>
   secrets.flatMap((h) =>
     received.filter((r) => withoutFinishedRuns(r.text).includes(h)).map((r) => `${r.from}: ${h.slice(0, 40)}`),
   )
+
+/**
+ * Messages that carry data (WebSocket frames and action answers), as opposed
+ * to scripts and pages, whose library code may use the same words.
+ */
+const dataMessages = (received: Received[]) =>
+  received.filter((r) => r.from.startsWith('ws ') || r.from.startsWith('http /api/actions/'))
 
 /** Picks option `index` at the current decision and waits for the next one. */
 async function pick(page: Page, decision: number, index: number) {
@@ -85,6 +96,8 @@ test.setTimeout(120_000)
 
 test('play, rewind, compare; runs stay private; hidden text stays on the server', async ({ users }) => {
   const [alice, bob] = await users(['Alice', 'Bob'])
+  expect(alice.userId, 'the test account registry should know Alice\'s user id').toBeTruthy()
+  ownPlayerId = alice.userId!
 
   // Collect every WebSocket frame and every text HTTP response (pages,
   // scripts, action answers) Alice's browser receives.
@@ -151,7 +164,20 @@ test('play, rewind, compare; runs stay private; hidden text stays on the server'
   await expect(alice.page.getByTestId('charts').locator('figure')).toHaveCount(3)
   await expect(alice.page.getByText('Where you split')).toBeVisible()
   await expect(alice.page.getByTestId('decisions').locator('li').nth(2)).toContainText('Where you split')
-  expect(leaks(await snapshot(), neverSent)).toEqual([])
+  const all = await snapshot()
+  expect(leaks(all, neverSent)).toEqual([])
+
+  // Outcomes of options Alice never picked: options 1 and 2 at decisions 1-2
+  // (she picked 0 both runs) and option 2 at decisions 3-5 (0, then 1).
+  const picked = [[0], [0], [0, 1], [0, 1], [0, 1]]
+  const unpickedOutcomes = starter.scenes.flatMap((scene, i) =>
+    scene.options.filter((_, o) => !picked[i].includes(o)).map((o) => o.outcome),
+  )
+  expect(leaks(all, unpickedOutcomes)).toEqual([])
+  const hiddenKeys = dataMessages(all).filter((r) => /"(delta|effects)"\s*:/.test(r.text)).map((r) => r.from)
+  expect(hiddenKeys).toEqual([])
+  // The key search is not vacuous: data messages did arrive.
+  expect(dataMessages(all).length).toBeGreaterThan(0)
 
   // 4. Bob sees the public starters but not Alice's runs.
   await bob.page.goto('/home')

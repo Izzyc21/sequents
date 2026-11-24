@@ -34,7 +34,7 @@ export const scenariosSchema: CollectionSchema = {
     { name: 'starter', storage: 'number', interpretation: { kind: 'boolean' } },
     { name: 'authorId', storage: 'text', interpretation: 'plain' },
     { name: 'seedVersion', storage: 'number', interpretation: 'plain' },
-    { name: 'answersId', storage: 'text', interpretation: 'plain' },
+    { name: 'answersId', storage: 'text', interpretation: 'plain', required: true },
   ],
   ownerField: 'authorId',
   // String form: a row is public when data.visibility === 'public'.
