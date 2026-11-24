@@ -13,6 +13,7 @@ import { settingsSchema } from './schemas/admin-schema'
 import { scenariosSchema } from './schemas/scenarios-schema'
 import { scenarioAnswersSchema } from './schemas/scenario-answers-schema'
 import { runsSchema } from './schemas/runs-schema'
+import { generationsSchema } from './schemas/generations-schema'
 
 export const schemas: CollectionSchema[] = [
   usersSchema,
@@ -20,4 +21,5 @@ export const schemas: CollectionSchema[] = [
   scenariosSchema,
   scenarioAnswersSchema,
   runsSchema,
+  generationsSchema,
 ]

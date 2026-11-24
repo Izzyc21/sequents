@@ -4,6 +4,7 @@ import { schemas } from './schemas'
 import { scenariosSchema } from './schemas/scenarios-schema'
 import { scenarioAnswersSchema } from './schemas/scenario-answers-schema'
 import { runsSchema } from './schemas/runs-schema'
+import { generationsSchema } from './schemas/generations-schema'
 
 const ROLES = ['*', 'viewer', 'member', 'admin']
 const row = (data: Record<string, unknown>) => ({ data, createdBy: 'user_seeder', recordId: 'r1' })
@@ -57,5 +58,15 @@ describe('runs', () => {
     expect(canRead(runsSchema, 'member', run, 'user_a')).toBe(true)
     expect(canRead(runsSchema, 'member', run, 'user_b')).toBe(false)
     expect(canRead(runsSchema, 'admin', run, 'user_b')).toBe(false)
+  })
+})
+
+describe('generations', () => {
+  it('cannot be read or changed by any role', () => {
+    const entry = row({ userDay: 'user_a_2026-11-24', appDay: '2026-11-24', ok: true })
+    for (const role of ROLES) {
+      expect(canRead(generationsSchema, role, entry, 'user_seeder')).toBe(false)
+      expect(canUpdate(generationsSchema, role, entry, 'user_seeder')).toBe(false)
+    }
   })
 })
