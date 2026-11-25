@@ -441,6 +441,18 @@ describe('canPlay', () => {
     await start(call)
   })
 
+  it("while writing is off, refuses a rewind of a finished run on another player's scenario, and keeps the author's", async () => {
+    const { store, call, keys } = await seeded()
+    const theirs = await start(call, 'user_b')
+    await play(call, theirs, choicesOf(keys, 'best'), 0, 'user_b')
+    const own = await start(call)
+    await play(call, own, choicesOf(keys, 'best'))
+    // The scenario turns out to be user_a's public one (as if written while writing was on).
+    Object.assign(store.get('scenarios')!.get(SCENARIO)!.data, { starter: false, authorId: 'user_a', visibility: 'public' })
+    expect((await call('rewind', 'user_b', { runId: theirs, decision: 3 })).error).toBe('This scenario is no longer available.')
+    expect((await call('rewind', 'user_a', { runId: own, decision: 3 })).success).toBe(true)
+  })
+
   it('never lets anyone play a private starter (authorId is empty)', async () => {
     const { store, call } = await seeded()
     store.get('scenarios')!.get(SCENARIO)!.data.visibility = 'private'

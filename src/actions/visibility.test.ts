@@ -164,6 +164,10 @@ describe('while writing is off', () => {
     await seed('gen_3', { visibility: 'public', starter: false })
     expect((await unpublish(OWNER, 'gen_3')).success).toBe(true)
     expect(data('gen_3')).toMatchObject({ visibility: 'private', takenDown: true })
+    // A taken-down scenario still says why; asking for what is already set still succeeds.
+    expect(await setVisibility(AUTHOR, 'gen_3', 'public')).toEqual({ success: false, error: TAKEN_DOWN })
+    await seed('gen_4', { visibility: 'public', starter: false })
+    expect((await setVisibility(AUTHOR, 'gen_4', 'public')).success).toBe(true)
   })
 
   it('is off in the actions the app exposes', async () => {

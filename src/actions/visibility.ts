@@ -35,9 +35,9 @@ export function makeVisibilityActions(writing: boolean): Record<string, ActionHa
       // Someone else's scenario gets the same answer as a missing one.
       if (!scenario || scenario.authorId !== userId) return fail('Scenario not found.')
       if (scenario.starter) return fail('Built-in scenarios stay public.')
-      if (visibility === 'public' && !writing) return fail(PUBLISHING_OFF)
       if (visibility === 'public' && scenario.takenDown) return fail(TAKEN_DOWN)
       if (scenario.visibility === visibility) return ok({ scenarioId, visibility })
+      if (visibility === 'public' && !writing) return fail(PUBLISHING_OFF)
       const res = await tools.update('scenarios', scenarioId, { visibility })
       if (!res.success) return saveFailed('setVisibility', res.error)
       if (visibility === 'public') {

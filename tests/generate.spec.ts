@@ -23,6 +23,24 @@ test('with writing off, home shows the starters and no write box, shared list or
   await expect(alice.page.getByRole('button', { name: 'Publish' })).toHaveCount(0)
 })
 
+test('with writing off, the server refuses a direct call to write a scenario', async ({ users }) => {
+  test.skip(WRITING_ENABLED, 'writing is on')
+  const [alice] = await users(['Alice'])
+  await alice.page.goto('/home')
+  await expect(alice.page.getByRole('heading', { name: 'Starters' })).toBeVisible({ timeout: 20_000 })
+  // Calls the action the way the app does (signed-in token, /api/actions/makeScenario),
+  // through the real worker, bypassing the hidden page controls.
+  const answer = await alice.page.evaluate(async () => {
+    const path = '/src/features/play/runAction.ts'
+    const { runAction } = await import(/* @vite-ignore */ path)
+    return runAction('makeScenario', { situation: 'Telling my landlord the heater has been broken for two weeks' }).then(
+      () => 'written',
+      (e: Error) => e.message,
+    )
+  })
+  expect(answer).toBe('Writing your own scenario is turned off. Play one of the starters instead.')
+})
+
 test('the write box needs 10 to 400 characters', async ({ users }) => {
   test.skip(!WRITING_ENABLED, 'writing is off')
   const [alice] = await users(['Alice'])
