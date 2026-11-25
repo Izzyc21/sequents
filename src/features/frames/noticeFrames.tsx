@@ -2,12 +2,13 @@
  * Pictures for the "password expires today" scenario. Two versions
  * share one setting picture and the pictures of decisions 2 and 4; decisions
  * 1 and 3 differ in the details the pictures show (an address bar, a log row,
- * a phone line, a console card, a calendar card and one inbox row).
+ * a phone line, a console card, a calendar card and one inbox row). What the
+ * people in the pictures think is the same in both versions.
  *
  * Every drawn word comes from NOTICE_TEXT, and the screen-reader description
  * of each picture is built from the same constants, so the two cannot drift.
  */
-import { Character, ConsoleCard, Each, InboxList, LogTable, Panel, Phone, Scene, SpeechBubble, StatTile, StickyNote, Browser } from './kit'
+import { Character, ConsoleCard, Each, InboxList, LogTable, Panel, Phone, Scene, SpeechBubble, StatTile, StickyNote, Browser, Thoughts, thoughtWords, type Thought } from './kit'
 import { ROSE } from './palette'
 import { EmailArrived } from './settingEmail'
 import type { FrameSet, FrameSpec } from './types'
@@ -29,6 +30,7 @@ export const NOTICE_TEXT = {
     linkUrl: 'https://go.harlowfinch.example/r/7Fq2',
     caption: 'Today, 9:05 AM. The email as it arrived, and Dana at your desk at 9:20 AM.',
     dana: 'I clicked it, typed my password and approved the prompt on my phone.',
+    thoughts: [['Dana', "Payroll is due at noon. Please don't take my laptop away."]] as Thought[],
   },
   d1: {
     caption: "Today, 9:22 AM. Dana's laptop, her phone and the admin console.",
@@ -41,6 +43,10 @@ export const NOTICE_TEXT = {
     phoneTime: '9:22',
     phoneApp: 'Authenticator',
     phoneAt: '9:19 AM',
+    thoughts: [
+      ['Dana', 'It looked exactly like the page I sign in on every morning.'],
+      ['Lena', 'If that was a trick, lock her out now before it spreads.'],
+    ] as Thought[],
     byVersion: [
       {
         url: 'https://login.microsoftonline.com.hf-secure-id.example/common/oauth2',
@@ -75,6 +81,10 @@ export const NOTICE_TEXT = {
       { label: 'IT change calendar', value: 'Shared calendar' },
       { label: 'Sam (IT lead)', value: 'Phone off until 1 PM' },
     ],
+    thoughts: [
+      ['Office manager', 'If I say ignore it and it came from IT, half of us get locked out at 5.'],
+      ['Priya', 'My bank warned us about emails exactly like this one.'],
+    ] as Thought[],
   },
   d3: {
     caption: 'Today, 9:55 AM. The web filter console, the IT change calendar and the inbox list.',
@@ -89,6 +99,10 @@ export const NOTICE_TEXT = {
       { time: 'Tue', from: 'Facilities', subject: 'Printer moved to floor 2' },
       { time: 'Mon', from: 'Accounts', subject: 'Month-end timetable' },
     ],
+    thoughts: [
+      ['Office manager', 'Just get it out of every inbox before anyone else clicks.'],
+      ['Tom', 'Before anyone deletes it, can we find out if Sam sent it?'],
+    ] as Thought[],
     byVersion: [
       {
         filter: [
@@ -121,6 +135,10 @@ export const NOTICE_TEXT = {
     manager: ['Office manager', 'What should I say to people?'],
     logsTitle: 'Admin console: sign-in logs',
     logs: [{ label: 'Accounts to review', value: '30 accounts' }],
+    thoughts: [
+      ['Dana', 'Can we keep this quiet and just warn the people who clicked?'],
+      ['Office manager', "If we say we don't know yet, people will panic."],
+    ] as Thought[],
   },
 }
 
@@ -133,7 +151,7 @@ function settingSpec(): FrameSpec {
   const e = T.email
   const description =
     `An email in an inbox at 9:05 AM. From: ${e.fromName} <${e.fromAddress}>. To: ${e.to}. Date: ${e.date}. Subject: ${e.subject}. ` +
-    `${e.body.join(' ')} A button reads "${e.linkLabel}". Link goes to: ${e.linkUrl}. Dana, at your desk, says: "${e.dana}"`
+    `${e.body.join(' ')} A button reads "${e.linkLabel}". Link goes to: ${e.linkUrl}. Dana, at your desk, says: "${e.dana}" ${thoughtWords(e.thoughts)}`
   return {
     title: 'Picture: the email in your inbox',
     render: () => (
@@ -141,10 +159,13 @@ function settingSpec(): FrameSpec {
         <EmailArrived
           email={{ fromName: e.fromName, fromAddress: e.fromAddress, to: e.to, date: e.date, subject: e.subject, linkUrl: e.linkUrl, linkLabel: e.linkLabel, body: e.body, caption: e.caption }}
           aside={
-            <div className="flex items-end justify-between gap-2">
-              <SpeechBubble speaker="Dana">{e.dana}</SpeechBubble>
-              <Character name="Dana" mood="worried" shirt={ROSE} />
-            </div>
+            <>
+              <div className="flex items-end justify-between gap-2">
+                <SpeechBubble speaker="Dana">{e.dana}</SpeechBubble>
+                <Character name="Dana" mood="worried" shirt={ROSE} />
+              </div>
+              <Thoughts items={e.thoughts} />
+            </>
           }
         />
       </Scene>
@@ -159,7 +180,7 @@ function d1Spec(v: NoticeVersion): FrameSpec {
     `Dana's laptop, her phone and the admin console at 9:22 AM. On the laptop, a browser tab titled "${t.tab}" shows a sign-in page. ` +
     `The address bar reads ${d.url}, with a padlock marked secure. The page reads: ${t.page.join('. ')}. A banner on the laptop reads "${t.payroll}". ` +
     `The admin console sign-in log has the columns ${t.columns.join(', ')}. Its rows: ${d.rows.map(rowWords).join('; ')}. ` +
-    `Dana's phone shows a notice from ${t.phoneApp} at ${t.phoneAt}: "${d.prompt}". A sticky note reads "${t.sticky}".`
+    `Dana's phone shows a notice from ${t.phoneApp} at ${t.phoneAt}: "${d.prompt}". A sticky note reads "${t.sticky}". ${thoughtWords(t.thoughts)}`
   return {
     title: "Picture: Dana's laptop and the admin console",
     render: () => (
@@ -176,6 +197,7 @@ function d1Spec(v: NoticeVersion): FrameSpec {
             <Phone time={t.phoneTime} battery="80%" notices={[{ app: t.phoneApp, text: d.prompt, time: t.phoneAt }]} />
             <StickyNote>{t.sticky}</StickyNote>
           </div>
+          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),
@@ -186,7 +208,7 @@ function d2Spec(): FrameSpec {
   const t = T.d2
   const description =
     `The hallway and the places you can check at 9:40 AM. The ${t.manager[0].toLowerCase()} says: "${t.manager[1]}" Staff in the hallway say: "${t.hallway[1]}" ` +
-    `Your phone shows a message from Sam at ${t.sam[2]}: "${t.sam[1]}" A sticky note reads "${t.sticky}". A card titled "${t.cardTitle}" lists: ${pairWords(t.places)}.`
+    `Your phone shows a message from Sam at ${t.sam[2]}: "${t.sam[1]}" A sticky note reads "${t.sticky}". A card titled "${t.cardTitle}" lists: ${pairWords(t.places)}. ${thoughtWords(t.thoughts)}`
   return {
     title: 'Picture: the hallway and the help channels',
     render: () => (
@@ -201,6 +223,7 @@ function d2Spec(): FrameSpec {
             <StickyNote>{t.sticky}</StickyNote>
           </div>
           <ConsoleCard title={t.cardTitle} rows={t.places} />
+          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),
@@ -214,7 +237,7 @@ function d3Spec(v: NoticeVersion): FrameSpec {
   const description =
     `The web filter console, the IT change calendar and the inbox list at 9:55 AM. ` +
     `Card "${t.filterTitle}": ${pairWords(d.filter)}. Tiles: ${t.tiles.join('; ')}. Card "${t.senderTitle}": ${pairWords([t.sender])}. ` +
-    `Card "${t.policyTitle}": ${pairWords(d.policy)}. ${t.inboxTitle} list, newest first: ${rows.map((r) => `${r.time}, ${r.from}: ${r.subject}`).join('; ')}.`
+    `Card "${t.policyTitle}": ${pairWords(d.policy)}. ${t.inboxTitle} list, newest first: ${rows.map((r) => `${r.time}, ${r.from}: ${r.subject}`).join('; ')}. ${thoughtWords(t.thoughts)}`
   return {
     title: 'Picture: the filter console, the IT change calendar and the inbox',
     render: () => (
@@ -227,6 +250,7 @@ function d3Spec(v: NoticeVersion): FrameSpec {
           <ConsoleCard title={t.senderTitle} rows={[t.sender]} />
           <ConsoleCard title={t.policyTitle} rows={d.policy} />
           <InboxList title={t.inboxTitle} rows={rows} />
+          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),
@@ -237,7 +261,7 @@ function d4Spec(): FrameSpec {
   const t = T.d4
   const description =
     `The office chat and the sign-in logs at 10:30 AM. Messages: ${t.chat.map(([who, text]) => `${who}: "${text}"`).join(' ')} ` +
-    `${t.manager[0]}: "${t.manager[1]}" A card titled "${t.logsTitle}" lists: ${pairWords(t.logs)}.`
+    `${t.manager[0]}: "${t.manager[1]}" A card titled "${t.logsTitle}" lists: ${pairWords(t.logs)}. ${thoughtWords(t.thoughts)}`
   return {
     title: 'Picture: the office chat',
     render: () => (
@@ -248,6 +272,7 @@ function d4Spec(): FrameSpec {
             {t.manager[1]}
           </SpeechBubble>
           <ConsoleCard title={t.logsTitle} rows={t.logs} />
+          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),

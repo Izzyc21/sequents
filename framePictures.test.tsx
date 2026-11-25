@@ -164,6 +164,7 @@ describe('descriptions and visible words', () => {
   const pair = (r: { label: string; value: string }): Word => [`${r.label}: ${r.value}`, [r.label, r.value]]
   const line = (r: { time: string; from: string; subject: string }): Word => [`${r.time}, ${r.from}: ${r.subject}`, [r.time, r.from, r.subject]]
   const cells = (row: string[]): Word => [row.join(', '), row]
+  const thought = ([who, text]: [string, string]): Word => [`${who} thinks: "${text}"`, [`${who} thinks`, text]]
   const inDescription = (spec: FrameSpec, words: Word[]) => words.forEach((w) => expect(flat(description(spec)), String(w)).toContain(typeof w === 'string' ? w : w[0]))
   const inPicture = (spec: FrameSpec, words: Word[]) => words.flatMap((w) => (typeof w === 'string' ? [w] : w[1])).forEach((w) => expect(flat(visible(spec)), w).toContain(w))
 
@@ -174,9 +175,9 @@ describe('descriptions and visible words', () => {
     const d4 = NOTICE_TEXT.d4
     const d2 = NOTICE_TEXT.d2
     return {
-      setting: [e.fromName, e.fromAddress, e.to, e.date, e.subject, e.linkLabel, e.linkUrl, e.dana, ...e.body],
-      d1: [d1.tab, d1.byVersion[v].url, d1.payroll, d1.sticky, d1.byVersion[v].prompt, ...d1.page, ...d1.byVersion[v].rows.map(cells)],
-      d2: [d2.manager[1], d2.hallway[1], d2.sam[1], d2.sam[2], d2.sticky, d2.cardTitle, ...d2.places.map(pair)],
+      setting: [e.fromName, e.fromAddress, e.to, e.date, e.subject, e.linkLabel, e.linkUrl, e.dana, ...e.body, ...e.thoughts.map(thought)],
+      d1: [d1.tab, d1.byVersion[v].url, d1.payroll, d1.sticky, d1.byVersion[v].prompt, ...d1.page, ...d1.byVersion[v].rows.map(cells), ...d1.thoughts.map(thought)],
+      d2: [d2.manager[1], d2.hallway[1], d2.sam[1], d2.sam[2], d2.sticky, d2.cardTitle, ...d2.places.map(pair), ...d2.thoughts.map(thought)],
       d3: [
         ...d3.byVersion[v].filter.map(pair),
         ...d3.byVersion[v].policy.map(pair),
@@ -184,8 +185,9 @@ describe('descriptions and visible words', () => {
         pair(d3.sender),
         line(d3.byVersion[v].lastRow),
         ...d3.commonRows.map(line),
+        ...d3.thoughts.map(thought),
       ],
-      d4: [...d4.chat.map(([, text]) => text), d4.manager[1], d4.logsTitle, ...d4.logs.map(pair)],
+      d4: [...d4.chat.map(([, text]) => text), d4.manager[1], d4.logsTitle, ...d4.logs.map(pair), ...d4.thoughts.map(thought)],
     }
   }
 
@@ -202,16 +204,43 @@ describe('descriptions and visible words', () => {
     const t = DEADLINE_TEXT
     const specs = specsOf(wifi)
     const words: Record<Slot, Word[]> = {
-      setting: [t.setting.essay, 'connected, no internet', 'Restart pending', t.setting.time, t.setting.phone.battery, t.setting.phone.text, t.setting.router, t.setting.sticky, 'WPS: amber'],
-      d1: [t.d1.toastApp, t.d1.toastTitle, t.d1.toastBody, ...t.d1.buttons, 'Connected, secured', t.d1.cable, 'Restart pending'],
-      d2: [t.d2.url, t.d2.heading, t.d2.drop, t.d2.essayNote, t.d2.wordCount, 'connected, dropped twice', t.d2.time],
-      d3: [t.d3.url, t.d3.status, t.d3.classmate[1], t.d3.time],
-      d4: [t.d4.url, t.d4.file, t.d4.status, t.d4.button, t.d4.saved, t.d4.time],
+      setting: [t.setting.essay, 'connected, no internet', 'Restart pending', t.setting.time, t.setting.phone.battery, t.setting.phone.text, t.setting.router, t.setting.sticky, 'WPS: amber', ...t.setting.thoughts.map(thought)],
+      d1: [t.d1.toastApp, t.d1.toastTitle, t.d1.toastBody, ...t.d1.buttons, 'Connected, secured', t.d1.cable, 'Restart pending', ...t.d1.thoughts.map(thought)],
+      d2: [t.d2.url, t.d2.heading, t.d2.drop, t.d2.essayNote, t.d2.wordCount, 'connected, dropped twice', t.d2.time, ...t.d2.thoughts.map(thought)],
+      d3: [t.d3.url, t.d3.status, t.d3.classmate[1], t.d3.time, ...t.d3.thoughts.map(thought)],
+      d4: [t.d4.url, t.d4.file, t.d4.status, t.d4.button, t.d4.saved, t.d4.time, ...t.d4.thoughts.map(thought)],
     }
     for (const slot of SLOTS) {
       inDescription(specs[slot]!, words[slot])
       inPicture(specs[slot]!, words[slot])
     }
+  })
+})
+
+describe('what the people in the pictures think', () => {
+  /** Each drawn thought bubble as [thinker, words], read from the markup. */
+  const thoughtsOf = (spec: FrameSpec) =>
+    [...markup(spec).matchAll(/<p class="m-0 text-xs font-bold">([^<]*?) thinks<\/p><p class="m-0 italic">([^<]*)<\/p>/g)].map((m) => [decode(m[1]), decode(m[2])])
+  const thinkers = (spec: FrameSpec) => thoughtsOf(spec).map(([who]) => who)
+
+  it.each(ALL)('%s: every picture shows at least one thought, and every decision picture two people', (_name, set) => {
+    const specs = specsOf(set)
+    for (const slot of SLOTS) expect(thinkers(specs[slot]!).length, slot).toBeGreaterThanOrEqual(1)
+    for (const slot of ['d1', 'd2', 'd3', 'd4'] as const) expect(new Set(thinkers(specs[slot]!)).size, slot).toBe(2)
+  })
+
+  it('gives both password notice versions the same thoughts at every picture', () => {
+    const a = specsOf(v0)
+    const b = specsOf(v1)
+    for (const slot of SLOTS) {
+      expect(thoughtsOf(a[slot]!).length, slot).toBeGreaterThan(0)
+      expect(thoughtsOf(a[slot]!), slot).toEqual(thoughtsOf(b[slot]!))
+    }
+  })
+
+  it('keeps the thoughts out of the version-specific text', () => {
+    for (const v of NOTICE_TEXT.d1.byVersion) expect(v).not.toHaveProperty('thoughts')
+    for (const v of NOTICE_TEXT.d3.byVersion) expect(v).not.toHaveProperty('thoughts')
   })
 })
 

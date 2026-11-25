@@ -1,5 +1,5 @@
 /**
- * Base pieces: panel, characters, sticky note, speech bubble.
+ * Base pieces: panel, characters, sticky note, speech bubble, thought bubbles.
  * Colours come from palette.ts; every word is HTML text and decorative
  * drawings carry aria-hidden="true".
  */
@@ -189,4 +189,40 @@ export function SpeechBubble({
       </div>
     </div>
   )
+}
+
+/** One person's unspoken view: who thinks it, then the words. */
+export type Thought = [thinker: string, text: string]
+
+/**
+ * What the people in a picture think but do not say. Set apart from speech:
+ * dashed outline, italic words, a trail of small circles, and "<name> thinks"
+ * written before the words.
+ */
+export function Thoughts({ items }: { items: Thought[] }) {
+  return (
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-5 pb-3">
+      <Each
+        items={items}
+        render={([thinker, text]) => (
+          <div
+            className="relative min-w-[11rem] flex-1 break-words rounded-[1.75rem] px-3 py-2 text-sm"
+            style={{ background: PAPER, border: `2px dashed ${INK}`, color: INK }}
+          >
+            <p className="m-0 text-xs font-bold">{thinker} thinks</p>
+            <p className="m-0 italic">{text}</p>
+            <svg className="absolute -bottom-4 left-5" width="26" height="16" viewBox="0 0 26 16" aria-hidden="true" focusable="false">
+              <circle cx="6" cy="5" r="4" fill={PAPER} stroke={INK} strokeWidth="2" />
+              <circle cx="16" cy="11" r="2.5" fill={PAPER} stroke={INK} strokeWidth="2" />
+            </svg>
+          </div>
+        )}
+      />
+    </div>
+  )
+}
+
+/** The words of a row of thoughts, for a picture's screen-reader description. */
+export function thoughtWords(items: Thought[]): string {
+  return items.map(([who, text]) => `${who} thinks: "${text}"`).join(' ')
 }

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { Browser, Calendar, Character, Clock, ConsoleCard, Each, EmailView, InboxList, Laptop, Letter, LogTable, Panel, Phone, Router, Scene, SpeechBubble, StatTile, StickyNote, Toast, Tray } from './kit'
+import { Browser, Calendar, Character, Clock, ConsoleCard, Each, EmailView, InboxList, Laptop, Letter, LogTable, Panel, Phone, Router, Scene, SpeechBubble, StatTile, StickyNote, Thoughts, thoughtWords, Toast, Tray } from './kit'
 import { sampleEmailFrame } from './settingEmail'
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(<>{node}</>)
@@ -78,6 +78,22 @@ describe('frame kit', () => {
     expect(out).toContain('<table')
     expect(out).toContain('<dl')
     expect(out).toMatch(/<p class="sr-only">Scene words<\/p>/)
+  })
+
+  it('draws thought bubbles apart from speech, with the thinker named first', () => {
+    const items: [string, string][] = [
+      ['Lena', 'First thought words'],
+      ['Tom', "Second thought's words"],
+    ]
+    const out = html(<Thoughts items={items} />)
+    expect(out).toContain('Lena thinks')
+    expect(out).toContain('Tom thinks')
+    expect(out).toContain('First thought words')
+    expect(out).toContain('dashed')
+    expect(out).toContain('italic')
+    for (const tag of out.match(/<svg\b[^>]*>/g) ?? []) expect(tag).toContain('aria-hidden="true"')
+    expect(out.indexOf('Lena thinks')).toBeLessThan(out.indexOf('First thought words'))
+    expect(thoughtWords(items)).toBe(`Lena thinks: "First thought words" Tom thinks: "Second thought's words"`)
   })
 
   it('reads a clock time that has AM or PM after it', () => {
