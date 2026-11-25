@@ -4,7 +4,7 @@ import type { Env } from '../../worker'
 import { STARTERS } from '../seeds/starters'
 import { analyse, bestSingleFix, fromChoice, scoreRun, tunnelCounts } from '../features/play/engine'
 import { choicesOf, findChoice, fixture } from '../features/play/fixture'
-import { FORMAT, LAST_CHANCE_CLOSED, LAST_CHANCE_USED, NOT_REVEALED, baseAnswersId, keepsLaterChoices, lastChanceRunId, pickLastChance, runHistory, scoreVisible, type RunRow, type ScenarioAnswers } from '../features/play/types'
+import { FORMAT, LAST_CHANCE_CLOSED, LAST_CHANCE_NONE, LAST_CHANCE_USED, LAST_CHANCE_WITHDRAWN, hasGrades, NOT_REVEALED, baseAnswersId, keepsLaterChoices, lastChanceRunId, pickLastChance, runHistory, scoreVisible, type RunRow, type ScenarioAnswers } from '../features/play/types'
 import { fakeTools } from './fake-tools'
 import { canPlay } from './shared'
 import { type Explained, playActions, resetSeedCache, RUNS_PER_DAY, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
@@ -517,6 +517,33 @@ describe('last chance and reveal sent at the same time', () => {
     expect(runOf(store, runId).hidden).toBe(1)
   })
 
+  it('a last chance that a reveal could not withdraw cannot finish once the first try shows its debrief', async () => {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    await play(call, runId, choicesOf(keys, 'blunder'))
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 1 })).data!.runId
+    // As if a reveal landed after the rewind's checks and its removal of the last chance failed.
+    await plain(store).update('runs', runId, { hidden: 0 })
+    expect((await lockIn(call, child, 1, choicesOf(keys, 'best')[1])).error).toBe(LAST_CHANCE_WITHDRAWN)
+    expect(runOf(store, child).status).toBe('playing')
+  })
+
+  it('finishing one of two unfinished last chances from an earlier version keeps the first try hidden', async () => {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    await play(call, runId, choicesOf(keys, 'blunder'))
+    const { tools } = fakeTools('user_a', store)
+    const parent = runOf(store, runId)
+    const base = { ...parent, parentRunId: runId, branchAt: 1, status: 'playing', choices: parent.choices.slice(0, 1), outcomes: parent.outcomes.slice(0, 1) }
+    await tools.create('runs', { ...base } as unknown as Record<string, unknown>, 'old-a')
+    await tools.create('runs', { ...base } as unknown as Record<string, unknown>, 'old-b')
+    expect((await lockIn(call, 'old-a', 1, choicesOf(keys, 'best')[1])).success).toBe(true)
+    expect(runOf(store, 'old-a').status).toBe('done')
+    expect(runOf(store, runId).hidden).toBe(1)
+    expect(runOf(store, runId).steps).toEqual([])
+    expect((await act('reveal', { runId }, plain(store))).error).toBe('Finish your last chance first. When it ends you see where your points went on both tries.')
+  })
+
   it('picks the first unfinished last chance, else the oldest', () => {
     const row = (recordId: string, status: RunRow['status']) => ({ recordId, data: { status } })
     expect(pickLastChance([])).toBeUndefined()
@@ -779,6 +806,21 @@ describe('rewind', () => {
     expect([...store.get('runs')!.values()]).toHaveLength(3)
   })
 
+  it('gives no last chance to a first try whose grades are already on its row, hidden or not', async () => {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    const blunders = choicesOf(keys, 'blunder')
+    await play(call, runId, blunders)
+    expect(hasGrades(runOf(store, runId))).toBe(false)
+    // As an earlier version saved it, or as a late duplicate choice left it: hidden again, grades still on the row.
+    await (fakeTools('user_a', store).tools as ActionTools).update('runs', runId, { hidden: 1, steps: scoreRun(keys, blunders).steps })
+    expect(hasGrades(runOf(store, runId))).toBe(true)
+    expect((await call('rewind', 'user_a', { runId, decision: 1 })).error).toBe(LAST_CHANCE_NONE)
+    expect([...store.get('runs')!.values()]).toHaveLength(1)
+    // The debrief still opens.
+    expect((await call('reveal', 'user_a', { runId })).success).toBe(true)
+  })
+
   it('refuses an unfinished run, a decision out of range and an anonymous caller', async () => {
     const { call, keys } = await seeded()
     const runId = await start(call)
@@ -919,13 +961,13 @@ describe('explain', () => {
 })
 
 describe('runs per player per day', () => {
-  it(`refuses a new run or a rewind after ${RUNS_PER_DAY} runs in 24 hours, for that player only`, async () => {
+  it(`refuses a new run after ${RUNS_PER_DAY} runs in 24 hours, for that player only, but still gives the one last chance`, async () => {
     const { call, keys } = await seeded()
     const runId = await start(call)
     await play(call, runId, choicesOf(keys, 'blunder'))
     for (let i = 1; i < RUNS_PER_DAY; i++) await start(call)
     expect((await call('startRun', 'user_a', { scenarioId: SCENARIO })).error).toContain(`${RUNS_PER_DAY} runs`)
-    expect((await call('rewind', 'user_a', { runId, decision: 1 })).success).toBe(false)
+    expect((await call('rewind', 'user_a', { runId, decision: 1 })).success).toBe(true)
     await start(call, 'user_b')
   })
 

@@ -245,6 +245,21 @@ export const LAST_CHANCE_USED = 'This run already had its last chance. Start the
 /** Error text of the rewind action for a first try whose debrief the player chose to see. */
 export const LAST_CHANCE_CLOSED = 'You chose to see where your points went, so this run has no last chance left. Start the scenario again.'
 
+/** Error text of the rewind action for a first try whose grades are already on its row (see hasGrades). */
+export const LAST_CHANCE_NONE = 'This run has no last chance left. Start the scenario again to play it differently.'
+
+/**
+ * True when a run's row already holds its grades. A first try gets them only
+ * when its debrief opens, so a first try that holds them has shown, or could
+ * show, where its points went: runs saved by an earlier version, or a late
+ * duplicate choice that marked a revealed run hidden again. Such a first try
+ * gets no last chance.
+ */
+export const hasGrades = (run: Pick<RunRow, 'steps'>): boolean => (run.steps?.length ?? 0) > 0
+
+/** Error text of the choose action for a last-chance run whose first try's debrief already shows (see reveal). */
+export const LAST_CHANCE_WITHDRAWN = 'You chose to see where your points went on your first try, so this last chance is closed. Start the scenario again to play it differently.'
+
 /** True when the page may show this run's debrief (every lost point): finished and not hidden (a missing `hidden` counts as revealed). */
 export const scoreVisible = (run: Pick<RunRow, 'status' | 'hidden'>): boolean => run.status === 'done' && run.hidden !== 1
 

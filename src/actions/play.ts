@@ -30,6 +30,9 @@ import {
   keepsLaterChoices,
   CHILDREN_READ,
   LAST_CHANCE_CLOSED,
+  LAST_CHANCE_NONE,
+  hasGrades,
+  LAST_CHANCE_WITHDRAWN,
   LAST_CHANCE_USED,
   lastChanceRunId,
   NOT_REVEALED,
@@ -319,7 +322,9 @@ export const playActions: Record<string, ActionHandler<Env>> = {
    * look-back screen (debrief hidden, last chance open) and gets no grades on
    * its row yet. A last-chance run gets them (debriefFields), shows its
    * debrief at once and turns its first try's debrief on too, writing that
-   * run's grades, since the last chance is now used. A run that
+   * run's grades, since the last chance is now used. A last chance whose
+   * first try's debrief already shows (the player chose to see it) is
+   * refused. A run that
    * started may finish even if its scenario was made private since; its text
    * lives in the snapshot and its answers row never changes.
    */
@@ -338,6 +343,13 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     if (fromChoice(choice).approach !== committed) return fail('That way belongs to a different approach than the one you chose.')
     const branching = run.branchAt >= 0 && decision === run.branchAt
     const parent = branching ? await loadRun(tools, run.parentRunId) : null
+    if (run.parentRunId && runId === lastChanceRunId(run.parentRunId)) {
+      // A last chance never finishes once its first try's debrief shows, so the debrief cannot guide it, even if a
+      // reveal sent at the same moment as the rewind could not withdraw it (see rewind and reveal). A first try that
+      // is gone shows no debrief, so its last chance plays on.
+      const firstTry = parent ?? (await loadRun(tools, run.parentRunId))
+      if (firstTry && scoreVisible(firstTry)) return fail(LAST_CHANCE_WITHDRAWN)
+    }
     if (parent && parent.choices[decision] === choice) {
       return fail('You chose that last time. Rewinding is for trying a different choice.')
     }
@@ -362,12 +374,17 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     const res = await tools.update('runs', runId, update)
     if (!res.success) return saveFailed('choose', res.error)
     if (done && run.parentRunId) {
-      // The last chance is used, so the first try's debrief may show. If this write fails, the first try keeps its
-      // look-back screen, which links here and offers its own reveal; rewind stays refused because this run exists.
+      // The last chance is used, so the first try's debrief may show, with its grades. It stays hidden when the first
+      // try cannot be loaded or graded, or when another of its runs is unfinished (only runs saved by an earlier
+      // version can have several). Then, or if this write fails, the first try keeps its look-back screen, which
+      // links to the unfinished run or offers its own reveal; rewind stays refused because this run exists.
       const first = parent ?? (await loadRun(tools, run.parentRunId))
       const graded = first && first.status === 'done' && first.answersId === run.answersId && first.choices.length === DECISIONS
-      const shown = await tools.update('runs', run.parentRunId, { hidden: 0, ...(graded ? debriefFields(answers!.wayKeys, first.choices) : {}) })
-      if (!shown.success) console.error('[action] choose: could not show the first try\'s debrief', shown.error)
+      const others = graded ? await childrenOf(tools, userId, run.parentRunId) : null
+      if (graded && others && !others.some((r) => r.recordId !== runId && r.data.status !== 'done')) {
+        const shown = await tools.update('runs', run.parentRunId, { hidden: 0, ...debriefFields(answers!.wayKeys, first.choices) })
+        if (!shown.success) console.error('[action] choose: could not show the first try\'s debrief', shown.error)
+      }
     }
     // The outcome is read from the run row; the reply only says whether the run ended.
     return ok({ done })
@@ -385,8 +402,11 @@ export const playActions: Record<string, ActionHandler<Env>> = {
    * fixed id (lastChanceRunId): two rewinds write the same row. And each of
    * rewind and reveal checks the other's write after its own: rewind reads
    * the first try again after creating, and reveal reads the last chance
-   * after writing, so when the two overlap the reveal wins and no last chance
-   * stays playable next to a showing debrief.
+   * after writing, so when the two overlap the reveal wins. Should that
+   * withdrawal fail, choose still refuses to finish a last chance whose first
+   * try's debrief shows, so the debrief can never guide it. Two rewinds sent at
+   * once to different decisions leave the one row with the later write's
+   * decision; both get its id.
    */
   rewind: async ({ userId, params, tools }) => {
     if (!userId || isAnonymousUserId(userId)) return fail(SIGN_IN)
@@ -403,9 +423,10 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       const used = await lastChanceOf(tools, userId, runId)
       return fail(used ? LAST_CHANCE_USED : LAST_CHANCE_CLOSED)
     }
+    if (hasGrades(run)) return fail(LAST_CHANCE_NONE)
     const scenario = await loadScenario(tools, run.scenarioId)
     if (!scenario || !canPlay(scenario, userId)) return fail('This scenario is no longer available.')
-    if (await overRunLimit(tools, userId)) return fail(RUN_LIMIT_MESSAGE)
+    // Not counted against the daily run limit: each first try (which is counted) gets at most this one run.
     // Checked last, right before the write, to keep the window for a second request small.
     const taken = await lastChanceOf(tools, userId, runId)
     if (taken === null) return fail(RUNS_UNREADABLE)

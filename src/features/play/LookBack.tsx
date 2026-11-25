@@ -7,13 +7,14 @@
  * nothing says where the points went; the debrief shows that after the last
  * chance is used, or at once if the player chooses to keep the run as it is.
  * A rewound run saved by an earlier version of the app can also land here
- * (it ended hidden); it gets no last chance of its own, only the reveal.
+ * (it ended hidden); it gets no last chance of its own, only the reveal. So
+ * does a first try whose grades are already on its row (hasGrades).
  */
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui'
 import { choiceText } from './labels'
 import { fromChoice } from './engine'
-import type { RunRow } from './types'
+import { hasGrades, type RunRow } from './types'
 
 export function LookBack({
   run,
@@ -29,7 +30,7 @@ export function LookBack({
   onRewind: (decision: number) => void
   onReveal: () => void
 }) {
-  const closed = lastChance !== undefined || !!run.parentRunId
+  const closed = lastChance !== undefined || !!run.parentRunId || hasGrades(run)
   return (
     <section className="mt-8" data-testid="lookback" aria-labelledby="lookback-heading">
       <h2 id="lookback-heading" className="text-xl font-semibold text-foreground">
@@ -56,7 +57,7 @@ export function LookBack({
             {lastChance.done ? 'Open your last chance →' : 'Continue your last chance →'}
           </Link>
         </div>
-      ) : run.parentRunId ? null : (
+      ) : closed ? null : (
         <>
           <h3 className="mt-8 text-lg font-semibold text-foreground">One last chance</h3>
           <p className="mt-1 text-sm text-muted-foreground">

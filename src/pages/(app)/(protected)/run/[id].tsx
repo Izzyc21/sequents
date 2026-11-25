@@ -144,7 +144,12 @@ export default function RunPage() {
       ) : (
         <>
           {/* Until the last chance is loaded the page cannot tell which controls apply, so they stay disabled. */}
-          <LookBack run={run} lastChance={lastChance} pending={pending || children.status === 'loading'} onRewind={rewind} onReveal={reveal} />
+          <LookBack run={run} lastChance={lastChance} pending={pending || children.status !== 'ready'} onRewind={rewind} onReveal={reveal} />
+          {children.status === 'error' && (
+            <p className="mt-3 text-sm text-destructive" role="alert">
+              Could not load your last chance. Reload the page to try again.
+            </p>
+          )}
           <div className="mt-6">
             <BackLink />
           </div>
