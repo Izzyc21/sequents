@@ -121,7 +121,7 @@ const DECISIONS: Decision[] = [
             ],
           },
           {
-            text: 'Make the same comparison, and revoke her sessions at the same time as a precaution, just in case',
+            text: 'Compare the page address and sign-in record with her usual ones, and revoke her sessions as a precaution',
             v: [
               {
                 g: 'mistake',
@@ -551,7 +551,7 @@ const DECISIONS: Decision[] = [
             ],
           },
           {
-            text: 'Post the same note in the office chat only, and ask anyone who has entered a password to deal with it themselves',
+            text: 'Post what the email is in the office chat only, and ask anyone who has entered a password to deal with it themselves',
             v: [
               {
                 g: 'slip',

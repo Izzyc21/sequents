@@ -92,3 +92,16 @@ describe('starter endings', () => {
     }
   })
 })
+
+describe('starter way texts', () => {
+  const drafts = [...STARTERS, ...Object.values(STARTER_VARIANTS).flat()]
+
+  // Ways are shuffled for every player, so a way may not lean on another way
+  // that could be shown after it ("Make the same comparison, and ...").
+  it('stand on their own', () => {
+    const pointsAtSibling = /\b(the same (comparison|note|message|approach|way|steps?)|as above|as before|the other options?)\b/i
+    for (const d of drafts) {
+      for (const dec of d.decisions) for (const a of dec.approaches) for (const w of a.ways) expect(w.text).not.toMatch(pointsAtSibling)
+    }
+  })
+})

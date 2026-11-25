@@ -272,7 +272,7 @@ const draft: ScenarioDraft = {
           text: 'Hold your answer for a day, then reply with your own proposal',
           ways: [
             {
-              text: 'Thank them, ask for a day, then counter at $82,000 and say it rests on the same senior-role pay data',
+              text: 'Thank them, ask for a day, then counter at $82,000 and say it rests on senior-role pay data',
               grade: 'best',
               outcome: 'Your manager understands and gives you until tomorrow. You counter at $82,000, tied to your sources, and they say they will go back to their boss.',
               why: 'Pausing keeps you from agreeing under pressure. A counter that moves a little, with a reason, shows good faith and gives your manager a concrete number to carry upward.',
