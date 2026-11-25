@@ -14,12 +14,16 @@ export function Each<T>({ items, render }: { items: T[]; render: (item: T, index
   return <>{Children.map(items.map((_, i) => i), (i: number) => render(items[i], i))}</>
 }
 
-/** Wraps one picture: a spoken-out description for screen readers, then the picture itself. */
+/**
+ * Wraps one picture: a spoken-out description for screen readers, then the
+ * picture itself. The description carries every drawn word, so screen readers
+ * skip the drawing and nothing is read out twice.
+ */
 export function Scene({ description, children }: { description: string; children: ReactNode }) {
   return (
     <div>
       <p className="sr-only">{description}</p>
-      {children}
+      <div aria-hidden="true">{children}</div>
     </div>
   )
 }

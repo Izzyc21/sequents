@@ -78,6 +78,8 @@ describe('frame kit', () => {
     expect(out).toContain('<table')
     expect(out).toContain('<dl')
     expect(out).toMatch(/<p class="sr-only">Scene words<\/p>/)
+    // The drawing repeats the description's words, so screen readers skip it.
+    expect(out).toMatch(/<p class="sr-only">Scene words<\/p><div aria-hidden="true">/)
   })
 
   it('draws thought bubbles apart from speech, with the thinker named first', () => {
