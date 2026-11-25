@@ -201,7 +201,7 @@ export type Thought = [thinker: string, text: string]
  */
 export function Thoughts({ items }: { items: Thought[] }) {
   return (
-    <div className="flex flex-wrap items-start gap-x-3 gap-y-5 pb-3">
+    <div role="group" aria-label="Thoughts" className="flex flex-wrap items-start gap-x-3 gap-y-5 pb-3">
       <Each
         items={items}
         render={([thinker, text]) => (
@@ -209,8 +209,8 @@ export function Thoughts({ items }: { items: Thought[] }) {
             className="relative min-w-[11rem] flex-1 break-words rounded-[1.75rem] px-3 py-2 text-sm"
             style={{ background: PAPER, border: `2px dashed ${INK}`, color: INK }}
           >
-            <p className="m-0 text-xs font-bold">{thinker} thinks</p>
-            <p className="m-0 italic">{text}</p>
+            <p className="m-0 text-xs font-bold" data-thinker="">{thinker} thinks</p>
+            <p className="m-0 italic" data-thought="">{text}</p>
             <svg className="absolute -bottom-4 left-5" width="26" height="16" viewBox="0 0 26 16" aria-hidden="true" focusable="false">
               <circle cx="6" cy="5" r="4" fill={PAPER} stroke={INK} strokeWidth="2" />
               <circle cx="16" cy="11" r="2.5" fill={PAPER} stroke={INK} strokeWidth="2" />

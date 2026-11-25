@@ -220,7 +220,7 @@ describe('descriptions and visible words', () => {
 describe('what the people in the pictures think', () => {
   /** Each drawn thought bubble as [thinker, words], read from the markup. */
   const thoughtsOf = (spec: FrameSpec) =>
-    [...markup(spec).matchAll(/<p class="m-0 text-xs font-bold">([^<]*?) thinks<\/p><p class="m-0 italic">([^<]*)<\/p>/g)].map((m) => [decode(m[1]), decode(m[2])])
+    [...markup(spec).matchAll(/<p [^>]*data-thinker=""[^>]*>([^<]*?) thinks<\/p><p [^>]*data-thought=""[^>]*>([^<]*)<\/p>/g)].map((m) => [decode(m[1]), decode(m[2])])
   const thinkers = (spec: FrameSpec) => thoughtsOf(spec).map(([who]) => who)
 
   it.each(ALL)('%s: every picture shows at least one thought, and every decision picture two people', (_name, set) => {
@@ -235,6 +235,28 @@ describe('what the people in the pictures think', () => {
     for (const slot of SLOTS) {
       expect(thoughtsOf(a[slot]!).length, slot).toBeGreaterThan(0)
       expect(thoughtsOf(a[slot]!), slot).toEqual(thoughtsOf(b[slot]!))
+    }
+  })
+
+  /** Every run of three words in a text, lowercased, punctuation dropped. */
+  const triples = (s: string) => {
+    const w = s.toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean)
+    return w.slice(2).map((_, i) => w.slice(i, i + 3).join(' '))
+  }
+  const SCENARIOS: [string, FrameSet[]][] = [
+    ['starter-phishing', [v0, v1]],
+    ['starter-wifi-deadline', [wifi]],
+  ]
+
+  it.each(SCENARIOS)('%s: no thought repeats three words in a row from any approach or way', (id, sets) => {
+    const drafts = [STARTERS.find((s) => s.id === id) as ScenarioDraft, ...(STARTER_VARIANTS[id] ?? [])]
+    const optionText = drafts.flatMap((d) => d.decisions.flatMap((x) => x.approaches.flatMap((a) => [a.text, ...a.ways.map((w) => w.text)])))
+    const taken = new Set(optionText.flatMap(triples))
+    for (const set of sets) {
+      const specs = specsOf(set)
+      for (const slot of SLOTS) {
+        for (const [who, words] of thoughtsOf(specs[slot]!)) expect(triples(words).filter((t) => taken.has(t)), `${slot} ${who}`).toEqual([])
+      }
     }
   })
 

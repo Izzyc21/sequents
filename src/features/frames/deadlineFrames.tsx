@@ -27,7 +27,7 @@ export const DEADLINE_TEXT = {
     phone: { time: '10:58', battery: '21%', app: 'Mobile network', text: 'Full signal' },
     router: 'Home router',
     sticky: 'Essay due 12:00 AM',
-    thoughts: [['Roommate', 'Unplug the router for thirty seconds. Works every time.']] as Thought[],
+    thoughts: [['Roommate', 'An hour is loads of time. No need to rush.']] as Thought[],
   },
   d1: {
     caption: 'Today, 10:58 PM. The laptop screen, the phone and the cable.',
@@ -39,8 +39,8 @@ export const DEADLINE_TEXT = {
     flyout: [{ label: 'Status', value: 'Connected, secured' }],
     cable: 'USB cable',
     thoughts: [
-      ['Roommate', 'Just run the Windows troubleshooter. It fixed mine last month.'],
-      ['Classmate', "Hotspot's the quickest. That's what I always do."],
+      ['Roommate', "Whatever's going on, don't lose that draft."],
+      ['Classmate', 'Still on my last paragraph. This is going to be close.'],
     ] as Thought[],
   },
   d2: {
@@ -55,8 +55,8 @@ export const DEADLINE_TEXT = {
     tray: [{ label: 'Internet', detail: 'connected, dropped twice' }],
     time: '11:15 PM',
     thoughts: [
-      ['Roommate', 'Just hand it in. Nobody loses marks over two citations.'],
-      ['Classmate', 'Read it through once before it goes in. One sloppy paragraph costs more than a citation.'],
+      ['Roommate', 'The internet keeps cutting out. How long have you got?'],
+      ['Classmate', 'Losing marks over formatting would drive me mad.'],
     ] as Thought[],
   },
   d3: {
@@ -67,8 +67,8 @@ export const DEADLINE_TEXT = {
     classmate: ['Classmate', 'mine is stuck too'],
     time: '11:42 PM',
     thoughts: [
-      ['Classmate', "Send the instructor a link to it in your drive. It's quicker than attaching."],
-      ['Roommate', 'Ask the instructor first. Emailing it without asking looks like an excuse.'],
+      ['Classmate', 'I want something with a time on it before midnight.'],
+      ['Roommate', 'Who knows what the instructor will accept at this point.'],
     ] as Thought[],
   },
   d4: {
@@ -81,8 +81,8 @@ export const DEADLINE_TEXT = {
     saved: 'Last saved 11:54 PM',
     time: '11:55 PM',
     thoughts: [
-      ['Roommate', "It hit 100%. You're done, shut it and relax."],
-      ['Classmate', "I'll email the instructor that I uploaded it, just in case."],
+      ['Roommate', 'Finally. Can we turn the lights off now?'],
+      ['Classmate', "I won't relax until I've seen it with my own eyes."],
     ] as Thought[],
   },
 }

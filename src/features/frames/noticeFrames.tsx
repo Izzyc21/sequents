@@ -30,7 +30,7 @@ export const NOTICE_TEXT = {
     linkUrl: 'https://go.harlowfinch.example/r/7Fq2',
     caption: 'Today, 9:05 AM. The email as it arrived, and Dana at your desk at 9:20 AM.',
     dana: 'I clicked it, typed my password and approved the prompt on my phone.',
-    thoughts: [['Dana', "Payroll is due at noon. Please don't take my laptop away."]] as Thought[],
+    thoughts: [['Dana', 'Was I supposed to do something different?']] as Thought[],
   },
   d1: {
     caption: "Today, 9:22 AM. Dana's laptop, her phone and the admin console.",
@@ -44,8 +44,8 @@ export const NOTICE_TEXT = {
     phoneApp: 'Authenticator',
     phoneAt: '9:19 AM',
     thoughts: [
-      ['Dana', 'It looked exactly like the page I sign in on every morning.'],
-      ['Lena', 'If that was a trick, lock her out now before it spreads.'],
+      ['Dana', 'Two more steps and payroll is done. Please let me finish.'],
+      ['Lena', 'If her account goes, does mine go next?'],
     ] as Thought[],
     byVersion: [
       {
@@ -82,8 +82,8 @@ export const NOTICE_TEXT = {
       { label: 'Sam (IT lead)', value: 'Phone off until 1 PM' },
     ],
     thoughts: [
-      ['Office manager', 'If I say ignore it and it came from IT, half of us get locked out at 5.'],
-      ['Priya', 'My bank warned us about emails exactly like this one.'],
+      ['Priya', "If this one is from IT and I ignore it, I'm locked out at 5."],
+      ['Office manager', 'Last thing I want is everyone typing their password into that.'],
     ] as Thought[],
   },
   d3: {
@@ -100,8 +100,8 @@ export const NOTICE_TEXT = {
       { time: 'Mon', from: 'Accounts', subject: 'Month-end timetable' },
     ],
     thoughts: [
-      ['Office manager', 'Just get it out of every inbox before anyone else clicks.'],
-      ['Tom', 'Before anyone deletes it, can we find out if Sam sent it?'],
+      ['Office manager', 'More people are opening it while we stand here.'],
+      ['Tom', 'If this came from IT, people still need instructions they can use.'],
     ] as Thought[],
     byVersion: [
       {
@@ -136,8 +136,8 @@ export const NOTICE_TEXT = {
     logsTitle: 'Admin console: sign-in logs',
     logs: [{ label: 'Accounts to review', value: '30 accounts' }],
     thoughts: [
-      ['Dana', 'Can we keep this quiet and just warn the people who clicked?'],
-      ['Office manager', "If we say we don't know yet, people will panic."],
+      ['Office manager', 'People are already guessing. Silence just makes the guesses worse.'],
+      ['Dana', "Please don't make me the example in front of everyone."],
     ] as Thought[],
   },
 }
