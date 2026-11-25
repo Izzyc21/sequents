@@ -7,7 +7,8 @@
  * writes runs from the browser: the startRun, commit, choose and rewind actions do,
  * after checking the move is legal, so a player cannot set their own score.
  * A run holds grades and points once it ends, never the reasons: those come
- * from the explain action once unlocked.
+ * from the explain action once unlocked. The hint and reveal actions write the
+ * look-back column.
  */
 import type { CollectionSchema } from 'deepspace/schema'
 
@@ -43,6 +44,10 @@ export const runsSchema: CollectionSchema = {
     { name: 'beats', storage: 'number', interpretation: 'plain' },
     { name: 'ending', storage: 'text', interpretation: 'plain' },
     { name: 'endingText', storage: 'text', interpretation: 'plain' },
+    // Look-back state of a finished run: { revealed, hintGuess, hint } (see RunRow.lookback). Json because stored booleans are not read back as booleans.
+    { name: 'lookback', storage: 'text', interpretation: { kind: 'json' } },
+    // Good endings still reachable after the first 0-4 choices (see RunRow.tunnel).
+    { name: 'tunnel', storage: 'text', interpretation: { kind: 'json' } },
   ],
   ownerField: 'playerId',
   permissions: { '*': nothing, viewer: nothing, member: ownReadOnly, admin: ownReadOnly },

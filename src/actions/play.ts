@@ -1,6 +1,7 @@
 /**
  * Playing: seed the starters, start a run, commit to an approach, lock in a
- * way, rewind, and explain a finished run.
+ * way, ask for a hint and reveal the score of a finished run, rewind, and
+ * explain a finished run.
  *
  * The browser never writes runs itself (the schema forbids it). Every move
  * comes through here so the server can check it is legal and score it
@@ -8,8 +9,33 @@
  */
 import { isAnonymousUserId, type ActionHandler, type ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
-import { analyse, beatsShare, bestSingleFix, fromChoice, isChoice, replay, scoreRun, seededRandom, shuffleDraft, splitDraft } from '../features/play/engine'
-import { APPROACHES, committedApproach, DECISIONS, FORMAT, type RunRow, type ScenarioDraft, type ScenarioRow } from '../features/play/types'
+import {
+  analyse,
+  beatsShare,
+  bestSingleFix,
+  fromChoice,
+  gainsByDecision,
+  hintFor,
+  isChoice,
+  replay,
+  scoreRun,
+  seededRandom,
+  shuffleDraft,
+  splitDraft,
+  tunnelCounts,
+} from '../features/play/engine'
+import {
+  ALREADY_REVEALED,
+  APPROACHES,
+  committedApproach,
+  DECISIONS,
+  FORMAT,
+  NOT_REVEALED,
+  scoreVisible,
+  type RunRow,
+  type ScenarioDraft,
+  type ScenarioRow,
+} from '../features/play/types'
 import { STARTERS } from '../seeds/starters'
 import { canPlay, fail, int, isGraded, loadAnswers, loadRun, loadScenario, ok, saveFailed, str } from './shared'
 
@@ -192,7 +218,8 @@ export const playActions: Record<string, ActionHandler<Env>> = {
    * approach committed to there (see commit). On a rewound run, the decision
    * it was rewound to must get a different choice than the original. The
    * last choice scores the run: grades and points per decision, the score,
-   * the biggest single fix and the share of paths it beats. A run that
+   * the biggest single fix and the share of paths it beats, and opens its
+   * look-back (score not yet revealed) with its tunnel counts. A run that
    * started may finish even if its scenario was made private since; its text
    * lives in the snapshot and its answers row never changes.
    */
@@ -232,6 +259,8 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       update.beats = beatsShare(analyse(answers!.wayKeys).scoreCounts, score)
       update.ending = ending
       update.endingText = answers!.endings[ending]
+      update.lookback = { revealed: false, hintGuess: -1, hint: '' }
+      update.tunnel = tunnelCounts(answers!.wayKeys, choices)
     }
     const res = await tools.update('runs', runId, update)
     if (!res.success) return saveFailed('choose', res.error)
@@ -277,6 +306,49 @@ export const playActions: Record<string, ActionHandler<Env>> = {
   },
 
   /**
+   * One hint for a finished run whose score is still hidden: the player
+   * guesses where it went wrong (`decision` 0-3, or 4 for "nowhere") and gets
+   * one line (hintFor). The guess and line are stored on the run, and a
+   * second call returns the stored line and writes nothing, so a run has one
+   * hint. A revealed run, or one with no look-back state, gets ALREADY_REVEALED.
+   */
+  hint: async ({ userId, params, tools }) => {
+    const runId = str(params.runId)
+    const decision = int(params.decision)
+    const run = await loadRun(tools, runId)
+    if (!run || run.playerId !== userId) return fail('Run not found.')
+    if (!isGraded(run)) return fail(OLD_RUN)
+    if (run.status !== 'done') return fail('Finish the run first.')
+    if (!run.lookback || run.lookback.revealed) return fail(ALREADY_REVEALED)
+    if (decision === null || decision < 0 || decision > DECISIONS) return fail('Pick a decision, or nowhere.')
+    if (run.lookback.hintGuess >= 0) return ok({ hint: run.lookback.hint })
+    const answers = await loadAnswers(tools, run.answersId)
+    if (!isGraded(answers)) return fail('This scenario is missing its answers.')
+    const { steps, score } = scoreRun(answers!.wayKeys, run.choices)
+    const hint = hintFor(decision, score, steps, gainsByDecision(answers!.wayKeys, run.choices))
+    const res = await tools.update('runs', runId, { lookback: { ...run.lookback, hintGuess: decision, hint } })
+    if (!res.success) return saveFailed('hint', res.error)
+    return ok({ hint })
+  },
+
+  /**
+   * Lets the page show a finished run's score and debrief. The stored hint
+   * stays. A run that is already revealed, or has no look-back state, is fine
+   * and nothing is written.
+   */
+  reveal: async ({ userId, params, tools }) => {
+    const runId = str(params.runId)
+    const run = await loadRun(tools, runId)
+    if (!run || run.playerId !== userId) return fail('Run not found.')
+    if (!isGraded(run)) return fail(OLD_RUN)
+    if (run.status !== 'done') return fail('Finish the run first.')
+    if (scoreVisible(run)) return ok({ revealed: true })
+    const res = await tools.update('runs', runId, { lookback: { ...run.lookback!, revealed: true } })
+    if (!res.success) return saveFailed('reveal', res.error)
+    return ok({ revealed: true })
+  },
+
+  /**
    * The reasons behind a finished run, one per decision. A best way's reason
    * is always shown. Any other reason, and the label of a flag that changed
    * the step, unlocks only once the player has finished runs with at least
@@ -286,6 +358,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
    * these answers, oldest started first. Below that many finished runs every
    * one counts, so an unlocked reason stays unlocked; past it, a choice tried
    * only in later runs counts only when the run being explained holds it.
+   * A finished run whose score is not yet revealed gets NOT_REVEALED.
    */
   explain: async ({ userId, params, tools }) => {
     const runId = str(params.runId)
@@ -293,6 +366,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     if (!run || run.playerId !== userId) return fail('Run not found.')
     if (!isGraded(run)) return fail(OLD_RUN)
     if (run.status !== 'done') return fail('Finish the run first.')
+    if (!scoreVisible(run)) return fail(NOT_REVEALED)
     const answers = await loadAnswers(tools, run.answersId)
     if (!isGraded(answers)) return fail('This scenario is missing its answers.')
     const mine = await tools.query('runs', {

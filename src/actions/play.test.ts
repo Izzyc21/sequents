@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { STARTERS } from '../seeds/starters'
-import { fromChoice } from '../features/play/engine'
+import { analyse, fromChoice, gainsByDecision, hintFor, scoreRun, tunnelCounts } from '../features/play/engine'
 import { choicesOf, findChoice, fixture } from '../features/play/fixture'
-import { FORMAT, type RunRow, type ScenarioAnswers } from '../features/play/types'
+import { ALREADY_REVEALED, FORMAT, NOT_REVEALED, scoreVisible, type RunRow, type ScenarioAnswers } from '../features/play/types'
 import { fakeTools } from './fake-tools'
 import { canPlay } from './shared'
 import { type Explained, playActions, resetSeedCache, RUNS_PER_DAY, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
@@ -47,6 +47,12 @@ async function start(call: Call, userId = 'user_a') {
 async function lockIn<T = Record<string, unknown>>(call: Call, runId: string, decision: number, choice: number, userId = 'user_a') {
   expect((await call('commit', userId, { runId, decision, approach: fromChoice(choice).approach })).success).toBe(true)
   return call<T>('choose', userId, { runId, decision, choice })
+}
+
+/** Reveals a finished run's score. */
+async function reveal(call: Call, runId: string, userId = 'user_a') {
+  const res = await call('reveal', userId, { runId })
+  expect(res.success).toBe(true)
 }
 
 /** Locks in `choices` from decision `from` on. */
@@ -271,6 +277,168 @@ describe('choose', () => {
   })
 })
 
+describe('look back', () => {
+  /** Runs an action as `userId` and counts the record writes it makes. */
+  async function counted(store: Store, name: string, userId: string, params: Record<string, unknown>) {
+    const { tools } = fakeTools(userId, store)
+    let writes = 0
+    const wrap =
+      <A extends unknown[], R>(fn: (...a: A) => R) =>
+      (...a: A) => (writes++, fn(...a))
+    const watching = { ...tools, create: wrap(tools.create), update: wrap(tools.update), remove: wrap(tools.remove) }
+    const result = (await playActions[name]({ userId, params, tools: watching as ActionTools, env, callerJwt: 'jwt' })) as ActionResult<{ hint: string }>
+    return { result, writes }
+  }
+
+  /** A run finished with a flag-raising slip, a clean middle, a flagged slip and a best last choice (score 75, not yet revealed). */
+  async function finished() {
+    const { store, call, keys } = await seeded()
+    const best = choicesOf(keys, 'best')
+    const choices = [findChoice(keys, 0, (w) => !!w.raises?.length), best[1], findChoice(keys, 2, (w) => !!w.ifRaised), best[3]]
+    const runId = await start(call)
+    await play(call, runId, choices)
+    return { store, call, keys, runId, choices }
+  }
+
+  it('opens the look-back and the tunnel on the last choice, and writes every score field as before', async () => {
+    const { store, call, keys, runId, choices } = await finished()
+    const run = runOf(store, runId)
+    expect(run).toMatchObject({ status: 'done', score: 75, ending: 'ok', lookback: { revealed: false, hintGuess: -1, hint: '' } })
+    expect(run.tunnel).toEqual(tunnelCounts(keys, choices))
+    expect(run.tunnel).toHaveLength(5)
+    expect(scoreVisible(run)).toBe(false)
+    const playing = await start(call)
+    await lockIn(call, playing, 0, 0)
+    expect(runOf(store, playing).lookback).toBeUndefined()
+    expect(runOf(store, playing).tunnel).toBeUndefined()
+  })
+
+  it('records the tunnel of a perfect run: it starts at every good path and ends at 1', async () => {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    await play(call, runId, choicesOf(keys, 'best'))
+    const tunnel = runOf(store, runId).tunnel!
+    expect(tunnel[0]).toBe(analyse(keys).endings.good)
+    expect(tunnel[4]).toBe(1)
+    for (let k = 1; k < 5; k++) expect(tunnel[k]).toBeLessThanOrEqual(tunnel[k - 1])
+  })
+
+  it('counts a missing look-back as revealed, and a finished run only once it is revealed', () => {
+    expect(scoreVisible({ status: 'done', lookback: undefined })).toBe(true)
+    expect(scoreVisible({ status: 'done', lookback: { revealed: true, hintGuess: -1, hint: '' } })).toBe(true)
+    expect(scoreVisible({ status: 'done', lookback: { revealed: false, hintGuess: -1, hint: '' } })).toBe(false)
+    expect(scoreVisible({ status: 'playing', lookback: undefined })).toBe(false)
+  })
+
+  it('gives the hint for the guess, stores guess and line, and returns the stored line again without a write', async () => {
+    const { store, keys, runId, choices } = await finished()
+    const { steps, score } = scoreRun(keys, choices)
+    const expected = hintFor(1, score, steps, gainsByDecision(keys, choices))
+    expect(expected).toBe('That one cost nothing by itself. Look earlier.')
+
+    const first = await counted(store, 'hint', 'user_a', { runId, decision: 1 })
+    expect(first.result).toEqual({ success: true, data: { hint: expected } })
+    expect(first.writes).toBe(1)
+    expect(runOf(store, runId).lookback).toEqual({ revealed: false, hintGuess: 1, hint: expected })
+
+    // A second ask, even for another decision, returns the stored line and writes nothing.
+    for (const decision of [1, 3, 4]) {
+      const again = await counted(store, 'hint', 'user_a', { runId, decision })
+      expect(again.result).toEqual({ success: true, data: { hint: expected } })
+      expect(again.writes).toBe(0)
+    }
+    expect(runOf(store, runId).lookback).toEqual({ revealed: false, hintGuess: 1, hint: expected })
+  })
+
+  it('stores a "nowhere" guess as 4', async () => {
+    const { store, call, runId } = await finished()
+    expect((await call<{ hint: string }>('hint', 'user_a', { runId, decision: 4 })).data!.hint).toBe('You did lose points somewhere. Look again.')
+    expect(runOf(store, runId).lookback).toMatchObject({ hintGuess: 4 })
+  })
+
+  it('refuses a hint on another player’s run, a run still playing, a revealed run, a run with no look-back and a bad decision', async () => {
+    const { store, call, runId } = await finished()
+    expect((await call('hint', 'user_b', { runId, decision: 0 })).error).toBe('Run not found.')
+    for (const decision of [-1, 5, 1.5, '1', null]) expect((await call('hint', 'user_a', { runId, decision })).success).toBe(false)
+    expect(runOf(store, runId).lookback).toEqual({ revealed: false, hintGuess: -1, hint: '' })
+
+    const playing = await start(call)
+    expect((await call('hint', 'user_a', { runId: playing, decision: 0 })).error).toBe('Finish the run first.')
+
+    const old = await start(call)
+    Object.assign(runOf(store, old), { status: 'done' })
+    expect((await call('hint', 'user_a', { runId: old, decision: 0 })).error).toBe(ALREADY_REVEALED)
+
+    await reveal(call, runId)
+    expect((await call('hint', 'user_a', { runId, decision: 0 })).error).toBe(ALREADY_REVEALED)
+    expect(runOf(store, runId).lookback).toEqual({ revealed: true, hintGuess: -1, hint: '' })
+  })
+
+  it('reveals once: keeps the hint, and a second reveal or one on an old row writes nothing', async () => {
+    const { store, call, runId } = await finished()
+    const hint = (await call<{ hint: string }>('hint', 'user_a', { runId, decision: 2 })).data!.hint
+    const first = await counted(store, 'reveal', 'user_a', { runId })
+    expect(first.result.success).toBe(true)
+    expect(first.writes).toBe(1)
+    expect(runOf(store, runId).lookback).toEqual({ revealed: true, hintGuess: 2, hint })
+    expect(scoreVisible(runOf(store, runId))).toBe(true)
+
+    const second = await counted(store, 'reveal', 'user_a', { runId })
+    expect(second.result.success).toBe(true)
+    expect(second.writes).toBe(0)
+
+    const old = await start(call)
+    Object.assign(runOf(store, old), { status: 'done' })
+    const third = await counted(store, 'reveal', 'user_a', { runId: old })
+    expect(third.result.success).toBe(true)
+    expect(third.writes).toBe(0)
+    expect(runOf(store, old).lookback).toBeUndefined()
+  })
+
+  it('refuses a reveal on another player’s run and on a run still playing', async () => {
+    const { store, call, runId } = await finished()
+    expect((await call('reveal', 'user_b', { runId })).error).toBe('Run not found.')
+    expect(runOf(store, runId).lookback!.revealed).toBe(false)
+    const playing = await start(call)
+    expect((await call('reveal', 'user_a', { runId: playing })).error).toBe('Finish the run first.')
+  })
+
+  it('refuses explain before the reveal and allows it after', async () => {
+    const { call, runId } = await finished()
+    expect((await call('explain', 'user_a', { runId })).error).toBe(NOT_REVEALED)
+    await reveal(call, runId)
+    expect((await call<{ decisions: Explained[] }>('explain', 'user_a', { runId })).data!.decisions).toHaveLength(4)
+  })
+
+  it('explains an old finished run that has no look-back state', async () => {
+    const { store, call, runId } = await finished()
+    delete runOf(store, runId).lookback
+    expect(scoreVisible(runOf(store, runId))).toBe(true)
+    expect((await call('explain', 'user_a', { runId })).success).toBe(true)
+  })
+
+  it('lets a rewind start from a run whose score is still hidden, and leaves the parent hidden', async () => {
+    const { store, call, runId } = await finished()
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 0 })).data!.runId
+    expect(runOf(store, child)).toMatchObject({ parentRunId: runId, status: 'playing' })
+    expect(runOf(store, runId).lookback!.revealed).toBe(false)
+  })
+})
+
+describe('fake record tools', () => {
+  it('drop keys that are not declared columns of the collection, like the SDK', async () => {
+    const { tools, store } = fakeTools('user_a')
+    await tools.create('runs', { scenarioId: 's', playerId: 'user_a', status: 'playing', notAColumn: 1 }, 'r1')
+    await tools.update('runs', 'r1', { lookback: { revealed: false, hintGuess: -1, hint: '' }, alsoNot: 2 })
+    expect(store.get('runs')!.get('r1')!.data).toEqual({
+      scenarioId: 's',
+      playerId: 'user_a',
+      status: 'playing',
+      lookback: { revealed: false, hintGuess: -1, hint: '' },
+    })
+  })
+})
+
 describe('rewind', () => {
   it('keeps the choices before the decision and refuses the same choice there again', async () => {
     const { store, call, keys } = await seeded()
@@ -308,6 +476,7 @@ describe('explain', () => {
     const hit = findChoice(keys, 2, (w) => !!w.ifRaised)
     const first = await start(call)
     await play(call, first, [raise, best[1], hit, best[3]])
+    await reveal(call, first)
 
     const one = (await call<{ decisions: Explained[] }>('explain', 'user_a', { runId: first })).data!.decisions
     expect(one.map((d) => d.unlocked)).toEqual([false, true, false, true])
@@ -326,6 +495,7 @@ describe('explain', () => {
     const { call, keys } = await seeded()
     const mine = await start(call)
     await play(call, mine, choicesOf(keys, 'blunder'))
+    await reveal(call, mine)
     const theirs = await start(call, 'user_b')
     await play(call, theirs, choicesOf(keys, 'mistake'), 0, 'user_b')
     const unfinished = await start(call)
@@ -341,6 +511,7 @@ describe('explain', () => {
     await play(call, other, [choicesOf(keys, 'best')[0], ...blunders.slice(1)])
     const runId = await start(call)
     await play(call, runId, blunders)
+    await reveal(call, runId)
     // 200 more finished runs, all with the same choice at the first decision: the counted window is full without the oldest.
     const runs = store.get('runs')!
     for (let i = 0; i < 200; i++) {

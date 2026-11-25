@@ -210,7 +210,28 @@ export interface RunRow {
   beats: number
   ending: Ending | ''
   endingText: string
+  /**
+   * Look-back state, written when the run ends: `revealed` is false until the
+   * player asks for the score; `hintGuess` is the decision (0-3) or 4 for
+   * "nowhere" the stored hint was asked for, -1 before a hint; `hint` is its
+   * line. Missing on rows written before it existed, which count as revealed.
+   */
+  lookback?: { revealed: boolean; hintGuess: number; hint: string }
+  /**
+   * Written when the run ends, length 5: tunnel[k] = how many of the paths
+   * that start with this run's first k choices end good (score 90+).
+   */
+  tunnel?: number[]
 }
+
+/** Error text of the explain action for a finished run whose score has not been revealed yet. */
+export const NOT_REVEALED = 'NOT_REVEALED'
+/** Error text of the hint action for a run whose score is already revealed (or that has no look-back state). */
+export const ALREADY_REVEALED = 'ALREADY_REVEALED'
+
+/** True when the page may show this run's score: finished and revealed (a missing lookback counts as revealed). */
+export const scoreVisible = (run: Pick<RunRow, 'status' | 'lookback'>): boolean =>
+  run.status === 'done' && run.lookback?.revealed !== false
 
 /**
  * The approach (0-2) the run is committed to at its next decision, or -1.
