@@ -97,7 +97,7 @@ export const NOTICE_TEXT = {
           { label: 'Action', value: 'Allowed' },
         ],
         policy: [{ label: 'This week', value: 'Nothing booked' }],
-        lastRow: { time: 'Last Thu', from: 'Reception', subject: 'Visitor parking reminder' },
+        lastRow: { time: 'Last Thu', from: 'IT Notices', subject: 'Printer on floor 2 back in service' },
       },
       {
         filter: [

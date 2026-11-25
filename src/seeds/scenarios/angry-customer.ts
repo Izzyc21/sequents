@@ -2,7 +2,7 @@ import type { ScenarioDraft } from '../../features/play/types'
 
 const draft: ScenarioDraft = {
   id: 'starter-angry-customer',
-  title: 'A customer writes in: two days offline and billed twice',
+  title: 'A customer writes in about two days offline and a double charge',
   situation:
     'You work phone support at a small internet provider. A customer calls to say his service has been down two days and that he was charged twice this month.',
   setting:
@@ -366,7 +366,7 @@ const draft: ScenarioDraft = {
   endings: {
     good: 'Marcus leaves the call with a technician booked for tomorrow morning, a refund request filed under a reference he can quote, and a credit for the days lost. A callback is booked on the ticket, so whoever opens it next can see what he was promised and when. He is still unhappy about the outage, but nothing he was told has to be taken back.',
     ok: 'Marcus got some of what he called for, though not cleanly. At least one thing you said or did cost him time, trust or a follow-up call. Whether he stays with the provider may come down to how the next contact goes.',
-    bad: 'Too much of the call went against Marcus for the parts that worked to carry it. More than one thing you said or did cost him time, trust or a follow-up call, and at least one cost him a lot. If he rings back, he starts that call with less patience than he had today.',
+    bad: 'Too much of the call went against Marcus for the parts that worked to carry it. More than one thing you said or did cost him time, trust or a follow-up call, and together they cost him a lot. If he rings back, he starts that call with less patience than he had today.',
   },
 }
 export default draft

@@ -35,14 +35,14 @@ const FLAGS: [{ id: string; label: string }[], { id: string; label: string }[]] 
 
 const ENDINGS = [
   {
-    good: 'The overseas session on Dana’s account was cut off within minutes, and by 10:05 the message was gone from all 30 inboxes with a copy kept for evidence. The link’s site was blocked, at least on the office network, and staff heard from you before noon without anyone being named.',
+    good: 'The Amsterdam session on Dana’s account was cut off within minutes, and by 10:05 the message was gone from all 30 inboxes with a copy kept for evidence. The link’s site was blocked, at least on the office network, and staff heard from you before noon without anyone being named.',
     ok: 'The email was an attack, and parts of your response held. At least one step cost time, left a way in open for longer than it needed to be, or made people less likely to come to you. Whether that gap mattered depends on what the attacker did with it.',
-    bad: 'The email was an attack, and your response did not keep pace with it. More than one step cost time, left a way in open, or made people less likely to come to you, and at least one of them cost a lot. You will spend the coming days finding out what the attacker reached.',
+    bad: 'The email was an attack, and your response did not keep pace with it. More than one step cost time, left a way in open, or made people less likely to come to you, and together they cost a lot. You will spend the coming days finding out what the attacker reached.',
   },
   {
     good: 'The notice was real: Sam’s scheduled password change, posted on the IT page the Thursday before. Nearly everyone changed their password before 5 PM, no more than three people were locked out, and nobody was named.',
     ok: 'The notice was real: Sam’s scheduled password change. Parts of your response fit that, but at least one step cost the office time, interrupted work that did not need interrupting, left people without clear word on what to do before the day was out, or gave staff an answer you could not stand behind. There was no attacker, so every cost was one the office paid itself.',
-    bad: 'The notice was real: Sam’s scheduled password change. More than one step cost the office time, interrupted work, left people without clear word on what to do before the day was out, or gave staff an answer you could not stand behind, and at least one cost a lot. There was no attacker, so the disruption came from the response, not from the email.',
+    bad: 'The notice was real: Sam’s scheduled password change. More than one step cost the office time, interrupted work, left people without clear word on what to do before the day was out, or gave staff an answer you could not stand behind, and together they cost a lot. There was no attacker, so the disruption came from the response, not from the email.',
   },
 ] as const
 
@@ -60,8 +60,8 @@ const DECISIONS: Decision[] = [
             v: [
               {
                 g: 'slip',
-                o: 'By 9:26 she is blocked and the overseas session can no longer renew its sign-in. The stolen password and anything added after her approval still work, so she cannot be let back in yet.',
-                w: 'Blocking and revoking stopped the attacker for now, but the stolen password and any added method work again the moment the block lifts. Replacing and clearing them in the same sitting makes the account safe to return.',
+                o: 'By 9:26 she is blocked and the Amsterdam session can no longer renew its sign-in. The stolen password and anything added after her approval still work, so she cannot be let back in yet.',
+                w: 'Blocking and revoking stop the session from renewing, but the stolen password and any added method work again the moment the block lifts. Replacing and clearing them at once closes both before she is let back in.',
               },
               {
                 g: 'mistake',
@@ -75,8 +75,8 @@ const DECISIONS: Decision[] = [
             v: [
               {
                 g: 'best',
-                o: 'By 9:28 she is blocked, the overseas session’s next refresh is refused and a new password is set. Every method is gone, and the audit log still shows when the extra one was added. Dana must set up her phone again.',
-                w: 'Blocking, revoking, replacing the stolen password and clearing every method leaves the attacker nothing to come back with. The audit log keeps the record of what was added, so removing it loses no evidence.',
+                o: 'By 9:28 she is blocked, the Amsterdam session’s next refresh is refused and a new password is set. Every method is gone, and the audit log still shows when the extra one was added. Dana must set up her phone again.',
+                w: 'Blocking, revoking, replacing the stolen password and clearing every method shuts the ways in that the record shows, and she stays out until the rest is checked. Note the added method’s details before removing it.',
               },
               {
                 g: 'blunder',
@@ -116,7 +116,7 @@ const DECISIONS: Decision[] = [
               {
                 g: 'best',
                 o: 'Her 9:19 sign-in shows her usual city and laptop, and the page address is Microsoft’s own sign-in page. She keeps working, and the payroll run is out by 11:40.',
-                w: 'The page address was Microsoft’s own and the sign-in record showed her usual city and browser, so there was nothing to contain and nothing to take from her. Checking first spared her a lockout.',
+                w: 'The page address was Microsoft’s own and the sign-in came from her own laptop when she used the link, so nothing pointed to anyone else in her account. Checking first spared her a lockout.',
               },
             ],
           },
@@ -161,8 +161,8 @@ const DECISIONS: Decision[] = [
               {
                 g: 'slip',
                 raises: ['back-in-early'],
-                o: 'By 9:30 Dana is back at work on the new password and the overseas session drops. Nothing has been looked at yet for what the attacker added while inside.',
-                w: 'A new password and ended sessions cut the attacker off, but handing the account back before any review leaves rules, extra methods or app access working under it.',
+                o: 'By 9:30 Dana is back at work on the new password and the Amsterdam session drops. Nothing has been looked at yet for what the attacker added while inside.',
+                w: 'A new password and ended sessions stop the stolen sign-in, but handing the account back before any review leaves rules, extra methods or app access working under it.',
               },
               {
                 g: 'mistake',
@@ -191,7 +191,7 @@ const DECISIONS: Decision[] = [
             v: [
               {
                 g: 'mistake',
-                o: 'Dana signs out of her laptop and phone and back in with the new password. The attacker’s browser, on another continent, is not one of her devices and stays signed in.',
+                o: 'Dana signs out of her laptop and phone and back in with the new password. The attacker’s browser in Amsterdam is not one of her devices, and it stays signed in.',
                 w: 'Signing out on her own devices cannot end a session on the attacker’s machine; only revoking it from the admin side does that.',
               },
               {
@@ -218,13 +218,13 @@ const DECISIONS: Decision[] = [
             v: [
               {
                 g: 'slip',
-                o: 'Neither the IT page nor the change calendar mentions a password change, and Sam’s phone is off until 1 PM. By 9:50 you can say IT did not send the email, but two more people have opened the link while you looked.',
-                w: 'Checking IT’s records was sound, but you already had the answer: the page Dana used was not Microsoft’s, and her account was signed in from Amsterdam minutes later. Staff could have been warned ten minutes sooner.',
+                o: 'Neither the IT page nor the change calendar mentions a password change, and Sam’s phone is off until 1 PM. By 9:50 neither record shows a notice from IT, but two more people have opened the link while you looked.',
+                w: 'Checking IT’s records was sound, but you already had the answer: the page Dana used was not Microsoft’s, and her account was signed in from Amsterdam minutes later. Staff could have been warned several minutes sooner.',
               },
               {
                 g: 'best',
                 o: 'The IT page has a post from last Thursday about this week’s password change, and the change calendar has it booked for today at 5 PM. Sam’s phone is off until 1 PM, but by 9:50 the records already answer you.',
-                w: 'Checking where IT would have recorded a notice gives an answer the email cannot give about itself. Here two records agreed, so you could rely on the email without having to reach Sam.',
+                w: 'Checking where IT would have recorded a notice gives an answer the email cannot give about itself. Here two records agreed with the email, so you could act on it without having to reach Sam.',
               },
             ],
           },
@@ -334,7 +334,7 @@ const DECISIONS: Decision[] = [
               {
                 g: 'best',
                 o: 'Staff stop using the link at 9:42. When the office manager asks how you know, you show her the page address and the Amsterdam sign-in, and one person comes over to say she opened the page but typed nothing.',
-                w: 'The page’s address was not Microsoft’s and Dana’s account was used from abroad minutes later, so the page takes passwords. That was enough to warn everyone at once, and a plain warning made it easy to come forward.',
+                w: 'The page’s address was not Microsoft’s, and Dana’s account was signed in from Amsterdam minutes after she used it. That was enough to warn everyone at once, and a plain warning made it easy to come forward.',
               },
               {
                 g: 'blunder',
@@ -440,7 +440,7 @@ const DECISIONS: Decision[] = [
               {
                 g: 'best',
                 o: 'The logs show nothing from a new country or device since 9:05, only staff on their usual laptops and phones, several on Microsoft’s own password page. It matches the IT notice, so you leave the message in place.',
-                w: 'The sign-in logs showed ordinary activity and the changes arrived through Microsoft’s own page, so a genuine notice was being followed. Looking first kept you from breaking it.',
+                w: 'The sign-in logs showed ordinary activity, with staff on Microsoft’s own password page, which fits a notice being followed. Looking first kept you from breaking it.',
               },
             ],
           },
@@ -470,7 +470,7 @@ const DECISIONS: Decision[] = [
               {
                 g: 'mistake',
                 o: 'Six reply that they did nothing and nine say they have changed their password. By 10:40 you are still counting replies and nobody has been told what to do.',
-                w: 'A reply is optional and slow, while the sign-in and audit logs already exist for every account. Counting replies spent the morning on what those logs would have shown in minutes.',
+                w: 'A reply is optional and slow, while the sign-in logs already cover every account. Counting replies spent the morning on what those logs would have shown in minutes.',
               },
             ],
           },

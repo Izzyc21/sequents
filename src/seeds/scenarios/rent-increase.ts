@@ -345,7 +345,7 @@ const draft: ScenarioDraft = {
               text: 'Ask him in writing for until Monday, saying you want to see the other place before you sign',
               grade: 'slip',
               outcome:
-                'He agrees to Monday but says he will list the unit that morning if he has not heard. The other place turns out to be a floor lower and noisier, and you say yes on Monday.',
+                'He agrees to Monday but says he will list the unit that morning if he has not heard. The other place turns out to be a floor lower and noisier, and you say yes first thing Monday.',
               why: 'More time is cheap to ask for, but it tells him you are comparing, and he can refuse or list on Monday. A listing is not an offer, so the extra days rarely produce a real alternative.',
             },
             {
@@ -370,7 +370,7 @@ const draft: ScenarioDraft = {
   endings: {
     good: "You renew at $1,740 for twelve months, about 9% above your old rent instead of the 15% in his letter. He heard your counter and your comparisons before he settled, and you said yes before his offer lapsed. You keep the place and about $1,200 over the year.",
     ok: "At least one step gave away money, time, leverage or a lease term you would not have chosen. A landlord notices what a tenant gives away, and he will remember it at the next renewal.",
-    bad: "The renewal got away from you. More than one step gave away money, time, leverage or lease terms you would not have chosen, and at least one gave away a lot. Whether you sign now or move, it happens more on his terms than on yours.",
+    bad: "The renewal got away from you. More than one step gave away money, time, leverage or lease terms you would not have chosen, and together they gave away a lot. Whether you sign now or move, it happens more on his terms than on yours.",
   },
 }
 export default draft

@@ -356,7 +356,7 @@ const draft: ScenarioDraft = {
   endings: {
     good: 'You got around the dead connection, a copy of the essay left the laptop by email while the upload ran or just before it, and your instructor had the essay in their inbox before midnight. The portal recorded your submission before the deadline.',
     ok: 'At least one step cost minutes, battery, a backup, your word with the instructor or the submission itself. Whether the essay counts comes down to what the portal showed at midnight, and the night ran closer to that line than it needed to.',
-    bad: 'Too much of the hour went to the wrong things. More than one step cost minutes, battery, a backup, your word with the instructor or the submission itself, and at least one cost a lot. Whatever the portal showed at midnight, the hour you had at 10:58 was gone long before it.',
+    bad: 'Too much of the hour went to the wrong things. More than one step cost minutes, battery, a backup, your word with the instructor or the submission itself, and together they cost a lot. Whatever the portal showed at midnight, the hour you had at 10:58 was gone long before it.',
   },
 }
 export default draft

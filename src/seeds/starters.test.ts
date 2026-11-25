@@ -93,6 +93,45 @@ describe('starter endings', () => {
   })
 })
 
+describe('starter good endings', () => {
+  // A good ending is reached by every path that loses at most 10 points, so
+  // its text must hold for each slip on those paths. These lists are the ways
+  // (decision.approach.way, in written order) that the good endings were
+  // checked against; if a regrade changes a list, re-read that good ending
+  // against the new ways' outcomes before updating it.
+  const checked: Record<string, string> = {
+    'starter-wifi-deadline': '1.1.1 1.3.2 2.3.2 3.1.1 3.3.2 4.2.2 4.3.1',
+    'starter-raise': '1.1.2 1.2.1 2.1.1 2.2.2 3.1.1 3.2.2 4.1.1 4.2.2',
+    'starter-group-project': '1.1.2 1.2.1 2.1.1 2.2.2 3.1.2 3.3.1 4.1.2 4.3.1',
+    'starter-angry-customer': '1.1.2 1.3.1 2.1.2 2.2.1 3.1.2 3.2.1 4.1.2 4.2.1',
+    'starter-phishing': '1.1.1 1.3.1 2.1.1 2.3.3 3.1.2 4.1.2 4.2.1',
+    'starter-phishing version 1': '1.2.2 1.3.2 2.1.2 2.3.3 3.2.2 3.3.1 4.1.2 4.2.1',
+    'starter-rent-increase': '1.1.1 1.2.2 2.1.1 2.2.2 3.1.1 3.2.2 4.2.2 4.3.1',
+  }
+  const all = [
+    ...STARTERS.map((d) => [d.id!, d] as const),
+    ...Object.entries(STARTER_VARIANTS).flatMap(([id, ds]) => ds.map((d, i) => [`${id} version ${i + 1}`, d] as const)),
+  ]
+
+  it('cover every starter and hidden version', () => {
+    expect(Object.keys(checked).sort()).toEqual(all.map(([name]) => name).sort())
+  })
+
+  it.each(all)('%s: only the checked ways reach the good ending without being best', (name, d) => {
+    const keys = wayKeysOf(d)
+    const ways = new Set<string>()
+    for (let n = 0; n < PATHS; n++) {
+      const path = Array.from({ length: DECISIONS }, (_, i) => Math.floor(n / CHOICES ** i) % CHOICES)
+      const run = scoreRun(keys, path)
+      if (run.ending !== 'good') continue
+      run.steps.forEach((s, i) => {
+        if (s.grade !== 'best') ways.add(`${i + 1}.${Math.floor(path[i] / 3) + 1}.${(path[i] % 3) + 1}`)
+      })
+    }
+    expect([...ways].sort().join(' ')).toBe(checked[name])
+  })
+})
+
 describe('starter way texts', () => {
   const drafts = [...STARTERS, ...Object.values(STARTER_VARIANTS).flat()]
 
