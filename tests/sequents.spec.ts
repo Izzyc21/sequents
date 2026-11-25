@@ -171,7 +171,7 @@ test('play, look back, reveal, rewind, compare; runs stay private; hidden text s
   await expect(lookBack.getByRole('heading', { name: 'Look back', exact: true })).toBeVisible()
   await expect(lookBack.getByTestId('band-line')).toHaveText(/^(It went well\.|Parts of it went wrong\.|It went badly\.)$/)
   await expect(lookBack.getByTestId('lookback-row')).toHaveCount(DECISIONS)
-  await expect(lookBack.getByText('Where do you think it started to go wrong?')).toBeVisible()
+  await expect(lookBack.getByRole('heading', { name: 'Which decision would you change, if any?' })).toBeVisible()
   await expect(lookBack.getByRole('button', { name: /Change this one/ })).toHaveCount(DECISIONS)
   await expect(lookBack.getByText('Doors you closed').first()).toBeVisible()
   await expect(alice.page.getByTestId('compared')).toHaveCount(0)
@@ -180,7 +180,8 @@ test('play, look back, reveal, rewind, compare; runs stay private; hidden text s
 
   // 1c. One hint: pick a decision, read one line; after a reload the line stays and the link is gone.
   await lookBack.getByRole('button', { name: "I'm stuck: give me a hint" }).click()
-  const picker = alice.page.getByRole('group', { name: 'Where do you think it went wrong?' })
+  const picker = alice.page.getByRole('group', { name: 'Which decision would you change, if any?' })
+  await expect(picker.getByLabel('None, I would keep them all')).toHaveCount(1)
   await expect(picker.getByRole('radio')).toHaveCount(DECISIONS + 1)
   await picker.getByLabel('Decision 1', { exact: true }).check()
   await picker.getByRole('button', { name: 'Get my hint' }).click()
@@ -201,13 +202,13 @@ test('play, look back, reveal, rewind, compare; runs stay private; hidden text s
   await expect(debrief.getByTestId('demerits').locator('li')).toHaveCount(DECISIONS)
   await expect(debrief.getByTestId('why')).toHaveCount(DECISIONS)
   await expect(alice.page.getByTestId('lookback')).toHaveCount(0)
-  // The tunnel strip: four nodes with a grade in words, how many good endings stay in reach, and the start.
+  // The tunnel strip: four nodes with a grade in words, how many paths from there still end well, and the start.
   await expect(alice.page.getByTestId('tunnel-start')).toHaveText(/^At the start: [\d,]+ of 6,561 paths ended well\.$/)
   const nodes = alice.page.getByTestId('tunnel-nodes').locator('li')
   await expect(nodes).toHaveCount(DECISIONS)
   for (let k = 0; k < DECISIONS; k++) {
     await expect(nodes.nth(k)).toContainText(/Best|Slip|Mistake|Blunder/)
-    await expect(nodes.nth(k)).toContainText(new RegExp(`Good endings still in reach: [\\d,]+ of ${(9 ** (DECISIONS - 1 - k)).toLocaleString('en-US')}`))
+    await expect(nodes.nth(k)).toContainText(new RegExp(`Paths from here that still end well: [\\d,]+ of ${(9 ** (DECISIONS - 1 - k)).toLocaleString('en-US')}`))
   }
   await expect(debrief.getByRole('link', { name: /Compare with the run you rewound/ })).toHaveCount(0)
 
@@ -240,8 +241,8 @@ test('play, look back, reveal, rewind, compare; runs stay private; hidden text s
   await expect(rows).toHaveCount(DECISIONS)
   await expect(alice.page.getByText('Changed', { exact: true })).toHaveCount(1)
   await expect(rows.nth(2).getByText('Changed', { exact: true })).toBeVisible()
-  await expect(alice.page.getByText('Kept from last time', { exact: true })).toHaveCount(1)
-  await expect(rows.nth(3).getByText('Kept from last time', { exact: true })).toBeVisible()
+  await expect(alice.page.getByText('Same as last time', { exact: true })).toHaveCount(1)
+  await expect(rows.nth(3).getByText('Same as last time', { exact: true })).toBeVisible()
   await expect(alice.page.getByTestId('compared')).toHaveText(/^Compared with the run you rewound: (better|worse|the same)\.$/)
   await expect(alice.page.locator('body')).not.toContainText(/\/ 100|biggest single fix/)
   await alice.page.getByRole('button', { name: 'Show my exact score' }).click()

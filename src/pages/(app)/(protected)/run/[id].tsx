@@ -24,12 +24,16 @@ import {
   committedApproach,
   DECISIONS,
   FORMAT,
+  keepsLaterChoices,
   runHistory,
   scoreVisible,
   WAYS,
   type PublicDecision,
   type RunRow,
 } from '../../../../features/play/types'
+
+/** How many of a player's finished runs on one scenario the history line reads. */
+const HISTORY_WINDOW = 200
 
 export default function RunPage() {
   const { id = '' } = useParams()
@@ -113,7 +117,7 @@ export default function RunPage() {
             index={decision}
             decision={snapshot.decisions[decision]}
             answersId={run.answersId}
-            arrival={run.branchAt === decision}
+            arrival={run.branchAt === decision && keepsLaterChoices(run, parent)}
             blocked={blocked}
             committed={committedApproach(run)}
             pending={pending}
@@ -148,8 +152,8 @@ export default function RunPage() {
  * the other approaches' ways are never shown), then a way inside it, then
  * Lock in. `committed` is the approach stored on the run, -1 before one is
  * chosen. `blocked` is the choice this rewound run may not repeat; -1 when
- * none. `arrival` is true at a rewound run's branch decision, where the
- * later decisions are kept from the earlier run.
+ * none. `arrival` is true at a rewound run's branch decision when the
+ * later decisions will be kept from the earlier run (keepsLaterChoices).
  */
 function DecisionCard({
   index,
@@ -263,9 +267,16 @@ function Debrief({
     }
   }, [runId])
 
-  // This player's finished runs of the same scenario and answers version: first try and best so far.
-  const { records: mine } = useQuery<RunRow>('runs', { where: { scenarioId: run.scenarioId, status: 'done' }, limit: 200 })
+  // This player's finished runs of the same scenario and seed version (read 'own': only their own rows reach the page): first try and best revealed.
+  // Newest first, so the latest runs always count; with a full window the oldest runs may be cut off, so the first try is not claimed.
+  const { records: mine } = useQuery<RunRow>('runs', {
+    where: { scenarioId: run.scenarioId, status: 'done' },
+    orderBy: 'createdAt',
+    orderDir: 'desc',
+    limit: HISTORY_WINDOW,
+  })
   const history = useMemo(() => runHistory(mine, run.answersId), [mine, run.answersId])
+  const windowFull = mine.length >= HISTORY_WINDOW
 
   const lost = run.steps.reduce((sum, s) => sum + s.points, 0)
   return (
@@ -287,8 +298,9 @@ function Debrief({
         <p className="mt-3 text-foreground">{run.endingText}</p>
         <ul className="mt-4 space-y-1 text-sm text-muted-foreground">
           {history && (
-            <li>
-              Your first try: {history.first}. Best so far: {history.best}.
+            <li data-testid="history">
+              Your first try: {windowFull ? `not in your last ${HISTORY_WINDOW} runs` : (history.first ?? 'not revealed yet')}. Best you
+              have revealed: {history.best ?? run.score}.
             </li>
           )}
           <li>This beats {run.beats}% of all possible paths.</li>

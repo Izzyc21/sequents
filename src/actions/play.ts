@@ -30,6 +30,7 @@ import {
   committedApproach,
   DECISIONS,
   FORMAT,
+  keepsLaterChoices,
   NOT_REVEALED,
   scoreVisible,
   type RunRow,
@@ -290,13 +291,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     if (!isGraded(answers)) return fail('This scenario is missing its answers.')
 
     // The new choice at the branch also settles every later decision: they keep the parent's choices.
-    const keepsParent =
-      parent !== null &&
-      parent.playerId === userId &&
-      parent.status === 'done' &&
-      parent.answersId === run.answersId &&
-      parent.choices.length === DECISIONS
-    const choices = keepsParent ? [...run.choices, choice, ...parent.choices.slice(decision + 1)] : [...run.choices, choice]
+    const choices = keepsLaterChoices(run, parent) ? [...run.choices, choice, ...parent.choices.slice(decision + 1)] : [...run.choices, choice]
     const details = replay(answers!.wayKeys, choices)
     const update: Partial<RunRow> = { choices, outcomes: details.map((d) => d.outcome), approach: -1, approachAt: -1 }
     const done = choices.length === DECISIONS
@@ -309,7 +304,8 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       update.beats = beatsShare(analyse(answers!.wayKeys).scoreCounts, score)
       update.ending = ending
       update.endingText = answers!.endings[ending]
-      update.lookback = { revealed: false, hintGuess: -1, hint: '' }
+      update.hidden = 1
+      update.lookback = { hintGuess: -1, hint: '' }
       update.tunnel = tunnelCounts(answers!.wayKeys, choices)
     }
     const res = await tools.update('runs', runId, update)
@@ -359,10 +355,13 @@ export const playActions: Record<string, ActionHandler<Env>> = {
 
   /**
    * One hint for a finished run whose score is still hidden: the player
-   * guesses where it went wrong (`decision` 0-3, or 4 for "nowhere") and gets
-   * one line (hintFor). The guess and line are stored on the run, and a
-   * second call returns the stored line and writes nothing, so a run has one
-   * hint. A revealed run, or one with no look-back state, gets ALREADY_REVEALED.
+   * names the decision they would change (`decision` 0-3, or 4 for "none")
+   * and gets one line (hintFor). The guess and line are stored on the run,
+   * and a later call returns the stored line and writes nothing, so a run has
+   * one hint. It writes only `lookback`, never `hidden`, so a reveal sent at
+   * the same time is never undone. Two hint calls sent at the same moment can
+   * both write; the page shows the stored line, so it settles on one. A
+   * revealed run, or one with no look-back state, gets ALREADY_REVEALED.
    */
   hint: async ({ userId, params, tools }) => {
     const runId = str(params.runId)
@@ -371,22 +370,22 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     if (!run || run.playerId !== userId) return fail('Run not found.')
     if (!isGraded(run)) return fail(OLD_RUN)
     if (run.status !== 'done') return fail('Finish the run first.')
-    if (!run.lookback || run.lookback.revealed) return fail(ALREADY_REVEALED)
-    if (decision === null || decision < 0 || decision > DECISIONS) return fail('Pick a decision, or nowhere.')
+    if (!run.lookback || scoreVisible(run)) return fail(ALREADY_REVEALED)
+    if (decision === null || decision < 0 || decision > DECISIONS) return fail('Pick a decision, or none.')
     if (run.lookback.hintGuess >= 0) return ok({ hint: run.lookback.hint })
     const answers = await loadAnswers(tools, run.answersId)
     if (!isGraded(answers)) return fail('This scenario is missing its answers.')
     const { steps, score } = scoreRun(answers!.wayKeys, run.choices)
     const hint = hintFor(decision, score, steps, gainsByDecision(answers!.wayKeys, run.choices))
-    const res = await tools.update('runs', runId, { lookback: { ...run.lookback, hintGuess: decision, hint } })
+    const res = await tools.update('runs', runId, { lookback: { hintGuess: decision, hint } })
     if (!res.success) return saveFailed('hint', res.error)
     return ok({ hint })
   },
 
   /**
-   * Lets the page show a finished run's score and debrief. The stored hint
-   * stays. A run that is already revealed, or has no look-back state, is fine
-   * and nothing is written.
+   * Lets the page show a finished run's score and debrief. It writes only
+   * `hidden`, so a hint stored at the same time stays. A run that is already
+   * revealed, or has no look-back state, is fine and nothing is written.
    */
   reveal: async ({ userId, params, tools }) => {
     const runId = str(params.runId)
@@ -395,7 +394,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     if (!isGraded(run)) return fail(OLD_RUN)
     if (run.status !== 'done') return fail('Finish the run first.')
     if (scoreVisible(run)) return ok({ revealed: true })
-    const res = await tools.update('runs', runId, { lookback: { ...run.lookback!, revealed: true } })
+    const res = await tools.update('runs', runId, { hidden: 0 })
     if (!res.success) return saveFailed('reveal', res.error)
     return ok({ revealed: true })
   },

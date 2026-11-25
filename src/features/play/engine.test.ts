@@ -16,6 +16,8 @@ import {
   giveawayProblems,
   HEURISTICS,
   hintFor,
+  HINT_NOWHERE,
+  NO_SINGLE_FIX,
   LENGTH_RULES,
   longestBestCount,
   mixProblems,
@@ -188,25 +190,23 @@ describe('hintFor', () => {
   const MISTAKE = c(0, 2)
   const SLIP = c(0, 1)
 
-  it('rule 1: a perfect run and "nowhere"', () => {
-    expect(hintOf([BEST, BEST, BEST, BEST], 4)).toBe('Right: nothing here cost you points.')
+  it('rule 1: a perfect run gets the same line for every guess, "none" included', () => {
+    for (let d = 0; d <= HINT_NOWHERE; d++) expect(hintOf([BEST, BEST, BEST, BEST], d)).toBe(NO_SINGLE_FIX)
   })
 
-  it('rule 2: a perfect run and a decision', () => {
-    for (let d = 0; d < 4; d++) expect(hintOf([BEST, BEST, BEST, BEST], d)).toBe('That one was fine. In fact, so was every other.')
+  it('rule 2: "none" after losing points, when one change would help', () => {
+    expect(hintOf([SLIP, BEST, BEST, BEST], HINT_NOWHERE)).toBe('One change would win points back. Look again.')
   })
 
-  it('rule 3: "nowhere" after losing points', () => {
-    expect(hintOf([SLIP, BEST, BEST, BEST], 4)).toBe('You did lose points somewhere. Look again.')
-  })
-
-  it('rule 4: no single change helps', () => {
+  it('rule 3: no single change helps', () => {
     const flat = wayKeysOf(fixture())
     for (const decision of flat) for (const approach of decision) for (const way of approach) way.grade = 'slip'
     for (const decision of flat) for (const approach of decision) for (const way of approach) delete way.ifRaised
     const choices = [BEST, c(1, 1), c(2, 2), BEST]
     expect(scoreRun(flat, choices).score).toBe(80)
-    expect(hintOf(choices, 0, flat)).toBe('No single change fixes this run. It may take more than one.')
+    // "None" reads exactly as on a perfect run, so it does not confirm the run lost points.
+    expect(hintOf(choices, HINT_NOWHERE, flat)).toBe(NO_SINGLE_FIX)
+    expect(hintOf(choices, 0, flat)).toBe('That one cost you, but changing it alone wins nothing back.')
   })
 
   it('rule 5: the guess is the one best place', () => {

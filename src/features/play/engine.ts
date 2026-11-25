@@ -335,20 +335,24 @@ export function tunnelCounts(wayKeys: WayAnswer[][][], choices: number[]): numbe
   return counts
 }
 
-/** The hint guess that means "I think nowhere went wrong". Guesses 0-3 are decisions. */
+/** The hint for a run that no single change improves; a perfect run gets it too. */
+export const NO_SINGLE_FIX = 'No single change wins points back here.'
+
+/** The hint guess that means "I would change none of them". Guesses 0-3 are decisions. */
 export const HINT_NOWHERE = DECISIONS
 
 /**
- * The one-line hint for a guess about where a finished run went wrong, from
- * the run's score, its scored steps and `gains` (gainsByDecision). The first
- * rule that matches decides; no line names an option or a grade.
+ * The one-line hint for the decision a player says they would change in a
+ * finished run (or HINT_NOWHERE for "none"), from the run's score, its scored
+ * steps and `gains` (gainsByDecision). The first rule that matches decides;
+ * no line names an option or a grade. "None" and any decision that cost
+ * nothing get the same line on a perfect run as on a run that no single change
+ * can improve, so a hint never confirms a perfect score.
  */
 export function hintFor(guess: number, score: number, steps: StepResult[], gains: number[]): string {
-  const nowhere = guess === HINT_NOWHERE
-  if (score === 100) return nowhere ? 'Right: nothing here cost you points.' : 'That one was fine. In fact, so was every other.'
-  if (nowhere) return 'You did lose points somewhere. Look again.'
-  const max = Math.max(...gains)
-  if (max <= 0) return 'No single change fixes this run. It may take more than one.'
+  const max = score === 100 ? 0 : Math.max(...gains)
+  if (max <= 0) return guess === HINT_NOWHERE || steps[guess].points === 0 ? NO_SINGLE_FIX : 'That one cost you, but changing it alone wins nothing back.'
+  if (guess === HINT_NOWHERE) return 'One change would win points back. Look again.'
   const top = gains.flatMap((g, d) => (g === max ? [d] : []))
   if (top.includes(guess)) {
     return top.length === 1

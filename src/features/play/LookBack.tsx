@@ -1,14 +1,16 @@
 /**
  * The look-back screen of a finished run whose score is still hidden: how it
  * went in one line, what happened at each decision, the doors the player did
- * not open, the question "where did it go wrong?" with a way to try a fix
- * (rewind), one optional hint, and a low-key link to reveal the exact score.
+ * not open, the neutral question "which decision would you change, if any?"
+ * with a way to try a change (rewind), one optional hint, and a low-key link
+ * to reveal the exact score.
  * It holds no grade, number or explanation; those come after reveal.
  */
 import { useState } from 'react'
 import { Button, cn } from '@/components/ui'
 import { BAND_LINE, choiceText, comparedWith } from './labels'
 import { runAction } from './runAction'
+import { fromChoice } from './engine'
 import { DECISIONS, type RunRow } from './types'
 
 const NOWHERE = DECISIONS
@@ -70,27 +72,28 @@ export function LookBack({
         </p>
       )}
 
-      <h3 className="mt-8 text-lg font-semibold text-foreground">Where do you think it started to go wrong?</h3>
+      <h3 className="mt-8 text-lg font-semibold text-foreground">Which decision would you change, if any?</h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Pick the decision you would change and try it. You will see how it plays out before you see any score.
+        Try one and see how it plays out before you see any score. If you would keep them all, you can stop here.
       </p>
       <ol className="mt-4 space-y-4" data-testid="lookback-rows">
         {run.choices.map((choice, i) => {
           const decision = run.snapshot.decisions[i]
-          const taken = Math.floor(choice / 3)
+          const taken = fromChoice(choice).approach
           const branch = run.branchAt >= 0 && i === run.branchAt
-          const kept = parent !== undefined && run.branchAt >= 0 && i > run.branchAt && parent.choices[i] === choice
-          const differs = kept && parent.outcomes[i] !== run.outcomes[i]
+          const later = parent !== undefined && run.branchAt >= 0 && i > run.branchAt
+          const same = later && parent.choices[i] === choice
+          const differs = same && parent.outcomes[i] !== run.outcomes[i]
           return (
             <li key={i} className="rounded-lg border border-border p-4" data-testid="lookback-row">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decision {i + 1}</span>
-                {branch && (
+                {(branch || (later && !same)) && (
                   <span className="rounded-full border border-primary px-2 py-0.5 text-xs font-medium text-foreground">Changed</span>
                 )}
-                {kept && (
+                {same && (
                   <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                    Kept from last time
+                    Same as last time
                   </span>
                 )}
               </div>
@@ -120,12 +123,12 @@ export function LookBack({
           </p>
         ) : asking ? (
           <fieldset className="rounded-md border border-border p-3" data-testid="hint-picker">
-            <legend className="px-1 text-sm font-medium text-foreground">Where do you think it went wrong?</legend>
+            <legend className="px-1 text-sm font-medium text-foreground">Which decision would you change, if any?</legend>
             <div className="mt-1 space-y-1">
               {[...Array(DECISIONS).keys(), NOWHERE].map((d) => (
                 <label key={d} className="flex min-h-9 cursor-pointer items-center gap-2 text-sm text-foreground">
                   <input type="radio" name="hint-guess" checked={guess === d} onChange={() => setGuess(d)} />
-                  {d === NOWHERE ? 'Nowhere, I think it was clean' : `Decision ${d + 1}`}
+                  {d === NOWHERE ? 'None, I would keep them all' : `Decision ${d + 1}`}
                 </label>
               ))}
             </div>

@@ -66,6 +66,10 @@ describe('runs columns', () => {
       expect(runsSchema.columns.find((col) => col.name === name)).toMatchObject({ storage: 'text', interpretation: { kind: 'json' } })
     }
   })
+
+  it('declare hidden as its own number column, so a reveal and a hint never write the same column', () => {
+    expect(runsSchema.columns.find((col) => col.name === 'hidden')).toMatchObject({ storage: 'number', interpretation: 'plain' })
+  })
 })
 
 describe('generations', () => {

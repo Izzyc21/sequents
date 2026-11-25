@@ -216,12 +216,19 @@ export interface RunRow {
   ending: Ending | ''
   endingText: string
   /**
-   * Look-back state, written when the run ends: `revealed` is false until the
-   * player asks for the score; `hintGuess` is the decision (0-3) or 4 for
-   * "nowhere" the stored hint was asked for, -1 before a hint; `hint` is its
-   * line. Missing on rows written before it existed, which count as revealed.
+   * 1 while the page must keep this finished run's score hidden (written when
+   * the run ends), 0 once the player asks for it (the reveal action). Missing
+   * on rows written before it existed, which count as revealed. Only reveal
+   * writes it and only the hint action writes `lookback`, so the two never
+   * overwrite each other.
    */
-  lookback?: { revealed: boolean; hintGuess: number; hint: string }
+  hidden?: number
+  /**
+   * The run's one hint, written when the run ends: `hintGuess` is the
+   * decision (0-3) or 4 for "none" the hint was asked for, -1 before a hint;
+   * `hint` is its line. Missing on rows written before it existed.
+   */
+  lookback?: { hintGuess: number; hint: string }
   /**
    * Written when the run ends, length 5: tunnel[k] = how many of the paths
    * that start with this run's first k choices end good (score 90+).
@@ -234,9 +241,29 @@ export const NOT_REVEALED = 'NOT_REVEALED'
 /** Error text of the hint action for a run whose score is already revealed (or that has no look-back state). */
 export const ALREADY_REVEALED = 'ALREADY_REVEALED'
 
-/** True when the page may show this run's score: finished and revealed (a missing lookback counts as revealed). */
-export const scoreVisible = (run: Pick<RunRow, 'status' | 'lookback'>): boolean =>
-  run.status === 'done' && run.lookback?.revealed !== false
+/** True when the page may show this run's score: finished and not hidden (a missing `hidden` counts as revealed). */
+export const scoreVisible = (run: Pick<RunRow, 'status' | 'hidden'>): boolean => run.status === 'done' && run.hidden !== 1
+
+/**
+ * True when locking in a new choice at a rewound run's branch decision also
+ * settles every later decision with the parent's choices (see the choose
+ * action): the parent loaded, is the same player's, finished, and played the
+ * same answers. Otherwise the later decisions are played again by hand. The
+ * page uses it too, so it promises the carry-over only when it will happen.
+ */
+export function keepsLaterChoices(
+  run: Pick<RunRow, 'playerId' | 'answersId' | 'branchAt'>,
+  parent: Pick<RunRow, 'playerId' | 'answersId' | 'status' | 'choices'> | null | undefined,
+): parent is Pick<RunRow, 'playerId' | 'answersId' | 'status' | 'choices'> {
+  return (
+    !!parent &&
+    run.branchAt >= 0 &&
+    parent.playerId === run.playerId &&
+    parent.status === 'done' &&
+    parent.answersId === run.answersId &&
+    parent.choices.length === DECISIONS
+  )
+}
 
 /**
  * The approach (0-2) the run is committed to at its next decision, or -1.
@@ -254,13 +281,20 @@ export const baseAnswersId = (answersId: string): string => answersId.replace(/(
 /**
  * First try and best so far over a player's finished runs on one scenario's
  * seed version (every hidden version of it counts), oldest first by
- * `createdAt`; null when there are none.
+ * `createdAt`; null when there are none. A score the player has not revealed
+ * stays hidden: `first` is null when the first try is still hidden, and
+ * `best` is the best revealed score (null when none is revealed), so the
+ * debrief of one run never shows another run's hidden score.
  */
 export function runHistory(
-  rows: { createdAt: string; data: Pick<RunRow, 'answersId' | 'score'> }[],
+  rows: { createdAt: string; data: Pick<RunRow, 'answersId' | 'score' | 'status' | 'hidden'> }[],
   answersId: string,
-): { first: number; best: number } | null {
+): { first: number | null; best: number | null } | null {
   const base = baseAnswersId(answersId)
-  const same = rows.filter((r) => baseAnswersId(r.data.answersId) === base).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  return same.length ? { first: same[0].data.score, best: Math.max(...same.map((r) => r.data.score)) } : null
+  const same = rows
+    .filter((r) => r.data.status === 'done' && baseAnswersId(r.data.answersId) === base)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  if (!same.length) return null
+  const shown = same.filter((r) => scoreVisible(r.data)).map((r) => r.data.score)
+  return { first: scoreVisible(same[0].data) ? same[0].data.score : null, best: shown.length ? Math.max(...shown) : null }
 }

@@ -1,8 +1,10 @@
 /**
  * The tunnel strip of a revealed run: one node per decision, coloured by
- * grade and also named in words, with how many good endings were still
- * reachable after that choice, and where an earlier choice changed how a
- * later decision played out.
+ * grade and also named in words, with how many of the paths that share the
+ * player's choices so far still end well (score 90+; several paths can reach
+ * the same ending, and the count falls at every decision because fewer
+ * decisions are left), and where an earlier choice changed how a later
+ * decision played out.
  */
 import { Badge } from '@/components/ui'
 import { GRADE_BADGE, GRADE_LABEL } from './labels'
@@ -33,7 +35,7 @@ export function Tunnel({ run }: { run: RunRow }) {
               {GRADE_LABEL[step.grade]}
             </Badge>
             <p className="mt-2 text-sm text-foreground">
-              Good endings still in reach: {number(tunnel[k + 1])} of {number(CHOICES ** (DECISIONS - 1 - k))}
+              Paths from here that still end well: {number(tunnel[k + 1])} of {number(CHOICES ** (DECISIONS - 1 - k))}
             </p>
           </li>
         ))}
