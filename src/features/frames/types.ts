@@ -24,10 +24,14 @@ export interface FrameSet {
 /**
  * Frames apply from one seed version of a scenario onward.
  * `frames: null` turns pictures off from that version.
+ * A scenario with extra hidden versions (answers ids ending ".1", ".2", ...)
+ * can give version n its own pictures in `variants[n - 1]`; a missing entry
+ * falls back to `frames`.
  */
 export interface FrameEntry {
   fromVersion: number
   frames: FrameSet | null
+  variants?: (FrameSet | null)[]
 }
 
 /** Where a frame is shown: the setting, or one decision (0-3). */

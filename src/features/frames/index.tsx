@@ -1,25 +1,30 @@
 /**
  * Looks up and draws the frames for a run.
- * A run's answers id is "<scenarioId>@v<version>"; the frames used are
- * those of the entry with the highest fromVersion not above that version,
- * so an old run keeps the pictures (or the lack of them) it was played with.
+ * A run's answers id is "<scenarioId>@v<version>", or
+ * "<scenarioId>@v<version>.<n>" for extra hidden version n. The frames used
+ * are those of the entry with the highest fromVersion not above that
+ * version, so an old run keeps the pictures (or the lack of them) it was
+ * played with; version n uses the entry's `variants[n - 1]` when present.
  */
 import { FRAMES } from './registry'
 import type { FrameEntry, FrameSet, FrameSlot, FrameSpec } from './types'
 
-const ANSWERS_ID = /^(.*)@v(\d+)$/
+const ANSWERS_ID = /^(.*)@v(\d+)(?:\.(\d+))?$/
 
 /** The frame set for a run's answers id, or null when it has none. */
 export function framesFor(answersId: string, registry: Record<string, FrameEntry[]> = FRAMES): FrameSet | null {
   const match = ANSWERS_ID.exec(answersId)
   if (!match) return null
-  const [, scenarioId, versionText] = match
+  const [, scenarioId, versionText, variantText] = match
   const version = Number(versionText)
+  const variant = variantText ? Number(variantText) : 0
   let best: FrameEntry | null = null
   for (const entry of registry[scenarioId] ?? []) {
     if (entry.fromVersion <= version && (!best || entry.fromVersion > best.fromVersion)) best = entry
   }
-  return best?.frames ?? null
+  if (!best) return null
+  if (variant > 0 && best.variants && best.variants[variant - 1] !== undefined) return best.variants[variant - 1]
+  return best.frames
 }
 
 function specFor(set: FrameSet | null, slot: FrameSlot): FrameSpec | null {
