@@ -142,6 +142,11 @@ export interface ScenarioRow extends PublicScenario {
   answersId: string
   /** Set when the app owner took it down; the author can no longer publish it. */
   takenDown?: boolean
+  /**
+   * Starters only: how many extra hidden versions of the answers exist, with
+   * answers ids `<answersId>.1` to `<answersId>.<variants>`. Missing reads as 0.
+   */
+  variants?: number
 }
 
 /** A row of the `scenario_answers` collection (recordId = the scenario's `answersId`). */
@@ -239,3 +244,23 @@ export const scoreVisible = (run: Pick<RunRow, 'status' | 'lookback'>): boolean 
  */
 export const committedApproach = (run: Pick<RunRow, 'approach' | 'approachAt' | 'choices'>): number =>
   (run.approachAt ?? -1) === run.choices.length ? (run.approach ?? -1) : -1
+
+/**
+ * The answers id without its hidden-version suffix: "id@v4.2" and "id@v4"
+ * both give "id@v4". Runs on any version of a starter's seed version share it.
+ */
+export const baseAnswersId = (answersId: string): string => answersId.replace(/(@v\d+)\.\d+$/, '$1')
+
+/**
+ * First try and best so far over a player's finished runs on one scenario's
+ * seed version (every hidden version of it counts), oldest first by
+ * `createdAt`; null when there are none.
+ */
+export function runHistory(
+  rows: { createdAt: string; data: Pick<RunRow, 'answersId' | 'score'> }[],
+  answersId: string,
+): { first: number; best: number } | null {
+  const base = baseAnswersId(answersId)
+  const same = rows.filter((r) => baseAnswersId(r.data.answersId) === base).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  return same.length ? { first: same[0].data.score, best: Math.max(...same.map((r) => r.data.score)) } : null
+}

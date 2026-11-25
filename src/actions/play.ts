@@ -37,6 +37,7 @@ import {
   type ScenarioRow,
 } from '../features/play/types'
 import { STARTERS } from '../seeds/starters'
+import { STARTER_VARIANTS } from '../seeds/variants'
 import { canPlay, fail, int, isGraded, loadAnswers, loadRun, loadScenario, ok, saveFailed, str } from './shared'
 
 /** Most runs (first runs and rewinds together) one player may start in any 24 hours. */
@@ -67,8 +68,18 @@ const SIGN_IN = 'Sign in to play.'
 /** Bump when starter text changes; the next seed writes a new version of every starter. */
 export const SEED_VERSION = 4
 
-/** recordId of a starter's answers for one seed version. */
-export const starterAnswersId = (scenarioId: string, version: number) => `${scenarioId}@v${version}`
+/** recordId of a starter's answers for one seed version; `n` is the hidden version (0 is the main one). */
+export const starterAnswersId = (scenarioId: string, version: number, n = 0) =>
+  n === 0 ? `${scenarioId}@v${version}` : `${scenarioId}@v${version}.${n}`
+
+/** A uniform whole number in 0..count-1 from the platform's secure random source (no modulo bias). */
+function randomBelow(count: number): number {
+  const limit = Math.floor(0x100000000 / count) * count
+  const word = new Uint32Array(1)
+  do crypto.getRandomValues(word)
+  while (word[0] >= limit)
+  return word[0] % count
+}
 
 /**
  * Makes sure every starter exists at `version`. Pages call the seedStarters
@@ -78,35 +89,58 @@ export const starterAnswersId = (scenarioId: string, version: number) => `${scen
  * write gives them no rights over it.
  *
  * Each starter is shuffled with a random source seeded by its id and version,
- * so every worker writes the same order. Each version gets its own answers
- * row, written before the readable row is pointed at it: a failure in between
- * leaves the old text with the old answers, and runs already started keep
- * their own answers. Versions only move forward: a worker still running older
- * code never writes an older version over a newer one. A starter is skipped
- * only when it is at this version, points at this version's answers and those
- * answers exist; otherwise it is written again. Starters are always public.
+ * so every worker writes the same order. A starter may have extra hidden
+ * versions in `variants` (keyed by starter id): each is shuffled with the
+ * same seed as the main draft, so its readable half must come out identical
+ * to the main one (the average-score figure aside, which belongs to the main
+ * version); a starter whose versions differ is not written and the seed
+ * fails. Each version gets its own answers row, written before the readable
+ * row is pointed at them: a failure in between leaves the old text with the
+ * old answers, and runs already started keep their own answers. Versions only
+ * move forward: a worker still running older code never writes an older
+ * version over a newer one. A starter is skipped only when it is at this
+ * version, points at this version's answers, records the same number of
+ * hidden versions and every answers row exists; otherwise it is written
+ * again. Starters are always public.
  */
-export async function seedStarterRows(tools: ActionTools, version: number, starters: ScenarioDraft[]) {
+export async function seedStarterRows(
+  tools: ActionTools,
+  version: number,
+  starters: ScenarioDraft[],
+  variants: Record<string, ScenarioDraft[]> = STARTER_VARIANTS,
+) {
   let written = 0
   for (const draft of starters) {
     const id = draft.id!
     const answersId = starterAnswersId(id, version)
+    const extra = variants[id] ?? []
     const existing = await loadScenario(tools, id)
     if (existing && (existing.seedVersion ?? 0) > version) continue
-    if (existing && existing.seedVersion === version && existing.answersId === answersId && (await loadAnswers(tools, answersId))) {
-      continue
+    if (existing && existing.seedVersion === version && existing.answersId === answersId && (existing.variants ?? 0) === extra.length) {
+      let complete = true
+      for (let n = 0; n <= extra.length && complete; n++) complete = !!(await loadAnswers(tools, starterAnswersId(id, version, n)))
+      if (complete) continue
     }
-    const { scenario, answers } = splitDraft(shuffleDraft(draft, seededRandom(answersId)))
-    const a = await tools.create('scenario_answers', { scenarioId: id, ...answers }, answersId)
-    if (!a.success) return saveFailed('seedStarters', a.error)
+    // Every version is shuffled with the main version's seed, so the readable order is the same.
+    const parts = [draft, ...extra].map((d) => splitDraft(shuffleDraft(d, seededRandom(answersId))))
+    const readable = (p: (typeof parts)[number]) => JSON.stringify({ ...p.scenario, guessAverage: 0 })
+    if (parts.some((p) => readable(p) !== readable(parts[0]))) {
+      console.error(`[action] seedStarters: a hidden version of ${id} has different readable text`)
+      return fail('That scenario could not be set up.')
+    }
+    for (let n = extra.length; n >= 0; n--) {
+      const a = await tools.create('scenario_answers', { scenarioId: id, ...parts[n].answers }, starterAnswersId(id, version, n))
+      if (!a.success) return saveFailed('seedStarters', a.error)
+    }
     const row: ScenarioRow = {
-      ...scenario,
+      ...parts[0].scenario,
       format: FORMAT,
       visibility: 'public',
       starter: true,
       authorId: '',
       seedVersion: version,
       answersId,
+      variants: extra.length,
     }
     const s = await tools.create('scenarios', { ...row }, id)
     if (!s.success) return saveFailed('seedStarters', s.error)
@@ -154,7 +188,11 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     return res
   },
 
-  /** Starts a first run of a scenario the caller may play. */
+  /**
+   * Starts a first run of a scenario the caller may play. A starter with
+   * hidden versions gives the run one of them at random (see seedStarterRows);
+   * the run keeps that answers id for good, rewinds included.
+   */
   startRun: async ({ userId, params, tools }) => {
     if (!userId || isAnonymousUserId(userId)) return fail(SIGN_IN)
     const scenarioId = str(params.scenarioId)
@@ -163,6 +201,10 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     // A scenario whose answers are missing could not finish; refuse it up front.
     if (!isGraded(await loadAnswers(tools, scenario.answersId))) return fail('That scenario is not available.')
     if (await overRunLimit(tools, userId)) return fail(RUN_LIMIT_MESSAGE)
+    // Each run gets one of the starter's hidden versions at random; a version whose answers are missing falls back to the main one.
+    let answersId = scenario.answersId
+    const n = randomBelow((scenario.variants ?? 0) + 1)
+    if (n > 0 && isGraded(await loadAnswers(tools, `${scenario.answersId}.${n}`))) answersId = `${scenario.answersId}.${n}`
     const { title, situation, setting, decisions, guessAverage } = scenario
     const run: RunRow = {
       format: FORMAT,
@@ -171,7 +213,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       parentRunId: '',
       branchAt: -1,
       snapshot: { title, situation, setting, decisions, guessAverage },
-      answersId: scenario.answersId,
+      answersId,
       choices: [],
       outcomes: [],
       approach: -1,
@@ -236,19 +278,24 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     const committed = committedApproach(run)
     if (committed < 0) return fail('Choose an approach first.')
     if (fromChoice(choice).approach !== committed) return fail('That way belongs to a different approach than the one you chose.')
-    if (run.branchAt >= 0 && decision === run.branchAt) {
-      const parent = await loadRun(tools, run.parentRunId)
-      if (parent && parent.choices[decision] === choice) {
-        return fail('You chose that last time. Rewinding is for trying a different choice.')
-      }
+    const branching = run.branchAt >= 0 && decision === run.branchAt
+    const parent = branching ? await loadRun(tools, run.parentRunId) : null
+    if (parent && parent.choices[decision] === choice) {
+      return fail('You chose that last time. Rewinding is for trying a different choice.')
     }
     const answers = await loadAnswers(tools, run.answersId)
     if (!isGraded(answers)) return fail('This scenario is missing its answers.')
 
-    const choices = [...run.choices, choice]
+    // The new choice at the branch also settles every later decision: they keep the parent's choices.
+    const keepsParent =
+      parent !== null &&
+      parent.playerId === userId &&
+      parent.status === 'done' &&
+      parent.answersId === run.answersId &&
+      parent.choices.length === DECISIONS
+    const choices = keepsParent ? [...run.choices, choice, ...parent.choices.slice(decision + 1)] : [...run.choices, choice]
     const details = replay(answers!.wayKeys, choices)
-    const outcome = details[decision].outcome
-    const update: Partial<RunRow> = { choices, outcomes: [...run.outcomes, outcome], approach: -1, approachAt: -1 }
+    const update: Partial<RunRow> = { choices, outcomes: details.map((d) => d.outcome), approach: -1, approachAt: -1 }
     const done = choices.length === DECISIONS
     if (done) {
       const { steps, score, ending } = scoreRun(answers!.wayKeys, choices)
@@ -270,7 +317,9 @@ export const playActions: Record<string, ActionHandler<Env>> = {
 
   /**
    * Starts a new run from a finished one, keeping every choice before
-   * `decision` and letting the player choose again from there.
+   * `decision` and letting the player choose again there. Choosing a
+   * different way at `decision` finishes the new run (see choose): the
+   * decisions after it keep what the finished run had.
    */
   rewind: async ({ userId, params, tools }) => {
     if (!userId || isAnonymousUserId(userId)) return fail(SIGN_IN)

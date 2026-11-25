@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { STARTERS } from '../seeds/starters'
 import { analyse, fromChoice, gainsByDecision, hintFor, scoreRun, tunnelCounts } from '../features/play/engine'
 import { choicesOf, findChoice, fixture } from '../features/play/fixture'
-import { ALREADY_REVEALED, FORMAT, NOT_REVEALED, scoreVisible, type RunRow, type ScenarioAnswers } from '../features/play/types'
+import { ALREADY_REVEALED, FORMAT, NOT_REVEALED, baseAnswersId, runHistory, scoreVisible, type RunRow, type ScenarioAnswers } from '../features/play/types'
 import { fakeTools } from './fake-tools'
 import { canPlay } from './shared'
 import { type Explained, playActions, resetSeedCache, RUNS_PER_DAY, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
@@ -14,6 +14,7 @@ const env = { OWNER_USER_ID: OWNER } as Env
 type Store = ReturnType<typeof fakeTools>['store']
 
 beforeEach(() => resetSeedCache())
+afterEach(() => vi.restoreAllMocks())
 
 /** Calls an action as `userId` against a shared in-memory store. */
 function caller(store: Store) {
@@ -439,6 +440,169 @@ describe('fake record tools', () => {
   })
 })
 
+describe('hidden versions', () => {
+  const versionId = starterAnswersId(SCENARIO, SEED_VERSION, 1)
+
+  /** A second version of the fixture: same readable text, the best and slip ways swapped at the last decision. */
+  function variantDraft() {
+    const draft = fixture(SCENARIO)
+    const ways = draft.decisions[3].approaches[0].ways
+    ;[ways[0].grade, ways[1].grade] = [ways[1].grade, ways[0].grade]
+    ways[0].outcome = 'A different outcome.'
+    draft.endings.good = 'A different good ending.'
+    return draft
+  }
+
+  /** A store seeded with the fixture and `variants` as its hidden versions. */
+  async function withVariants(variants = [variantDraft()]) {
+    const { store, tools } = fakeTools(OWNER)
+    expect(await seedStarterRows(tools, SEED_VERSION, [fixture(SCENARIO)], { [SCENARIO]: variants })).toEqual({ success: true, data: { written: 1 } })
+    return { store, tools, call: caller(store) }
+  }
+
+  /** Makes the next startRun calls draw these random words, one per draw. */
+  function draws(...words: number[]) {
+    const queue = [...words]
+    vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(((array: Uint32Array) => {
+      array[0] = queue.shift() ?? 0
+      return array
+    }) as typeof crypto.getRandomValues)
+  }
+
+  const answersOf = (store: Store, id: string) => store.get('scenario_answers')!.get(id)!.data as unknown as ScenarioAnswers
+
+  it('names the answers of hidden version n with a .n suffix', () => {
+    expect(starterAnswersId('x', 4)).toBe('x@v4')
+    expect(starterAnswersId('x', 4, 0)).toBe('x@v4')
+    expect(starterAnswersId('x', 4, 2)).toBe('x@v4.2')
+    expect(baseAnswersId('x@v4.2')).toBe('x@v4')
+    expect(baseAnswersId('x@v4')).toBe('x@v4')
+  })
+
+  it('writes one answers row per version and the same readable row as a starter with no versions', async () => {
+    const plain = await seeded()
+    const { store } = await withVariants()
+    const { variants, ...readable } = store.get('scenarios')!.get(SCENARIO)!.data
+    expect(variants).toBe(1)
+    const { variants: none, ...plainReadable } = plain.store.get('scenarios')!.get(SCENARIO)!.data
+    expect(none).toBe(0)
+    expect(readable).toEqual(plainReadable)
+    expect(readable.answersId).toBe(answersId)
+    expect(answersOf(store, answersId).wayKeys).toEqual(plain.keys)
+    expect(answersOf(store, versionId).wayKeys).not.toEqual(plain.keys)
+    expect(answersOf(store, versionId).endings.good).toBe('A different good ending.')
+    // Same order in both, only the hidden half differs: the same way texts sit at the same places.
+    const texts = (ans: ScenarioAnswers) => ans.wayKeys.map((d) => d.map((a) => a.map((w) => w.outcome === 'A different outcome.')))
+    expect(texts(answersOf(store, versionId)).flat(2).filter(Boolean)).toHaveLength(1)
+  })
+
+  it('refuses to seed a starter whose hidden version has different readable text, writing none of it', async () => {
+    const changed = variantDraft()
+    changed.decisions[1].approaches[2].ways[0].text = 'Another way of putting it'
+    const { store, tools } = fakeTools(OWNER)
+    const res = await seedStarterRows(tools, SEED_VERSION, [fixture(SCENARIO)], { [SCENARIO]: [changed] })
+    expect(res.success).toBe(false)
+    expect(store.get('scenarios')?.get(SCENARIO)).toBeUndefined()
+    expect(store.get('scenario_answers')?.size ?? 0).toBe(0)
+    const retitled = variantDraft()
+    retitled.title = 'Another title'
+    expect((await seedStarterRows(tools, SEED_VERSION, [fixture(SCENARIO)], { [SCENARIO]: [retitled] })).success).toBe(false)
+  })
+
+  it('skips a seeded starter, and writes it again when a version’s answers are missing or the number of versions changes', async () => {
+    const { store, tools } = await withVariants()
+    const seedAgain = (variants: unknown[]) =>
+      seedStarterRows(tools, SEED_VERSION, [fixture(SCENARIO)], { [SCENARIO]: variants as ReturnType<typeof variantDraft>[] })
+    expect(await seedAgain([variantDraft()])).toEqual({ success: true, data: { written: 0 } })
+    store.get('scenario_answers')!.delete(versionId)
+    expect(await seedAgain([variantDraft()])).toEqual({ success: true, data: { written: 1 } })
+    expect(answersOf(store, versionId)).toBeDefined()
+    expect(await seedAgain([])).toEqual({ success: true, data: { written: 1 } })
+    expect(store.get('scenarios')!.get(SCENARIO)!.data.variants).toBe(0)
+  })
+
+  it('gives a run the version the random draw picks, and each version can be assigned', async () => {
+    const { store, call } = await withVariants()
+    draws(0, 1)
+    const base = runOf(store, await start(call))
+    const variant = runOf(store, await start(call))
+    expect(base.answersId).toBe(answersId)
+    expect(variant.answersId).toBe(versionId)
+    expect(base.snapshot).toEqual(variant.snapshot)
+  })
+
+  it('draws uniformly without bias: a word in the uneven tail is thrown away', async () => {
+    const { store, call } = await withVariants([variantDraft(), variantDraft()])
+    // Three versions: the words 0, 1 and 2 pick versions 0, 1 and 2; the top word is refused and the next one used.
+    draws(0, 1, 2, 0xffffffff, 2)
+    const ids = []
+    for (let i = 0; i < 4; i++) ids.push(runOf(store, await start(call)).answersId)
+    expect(ids).toEqual([answersId, versionId, starterAnswersId(SCENARIO, SEED_VERSION, 2), starterAnswersId(SCENARIO, SEED_VERSION, 2)])
+  })
+
+  it('uses the main version when the chosen version’s answers are missing', async () => {
+    const { store, call } = await withVariants()
+    store.get('scenario_answers')!.delete(versionId)
+    draws(1)
+    expect(runOf(store, await start(call)).answersId).toBe(answersId)
+  })
+
+  it('assigns every version at random when nothing is stubbed', async () => {
+    const { store, call } = await withVariants()
+    const seen = new Set<string>()
+    for (let i = 0; i < 40; i++) seen.add(runOf(store, await start(call)).answersId)
+    expect([...seen].sort()).toEqual([answersId, versionId])
+  })
+
+  it('keeps the version through a rewind, and scores on that version’s answers', async () => {
+    const { store, call } = await withVariants()
+    draws(1)
+    const runId = await start(call)
+    const keys = answersOf(store, versionId).wayKeys
+    const best = choicesOf(keys, 'best')
+    await play(call, runId, best)
+    expect(runOf(store, runId)).toMatchObject({ answersId: versionId, score: 100, endingText: 'A different good ending.' })
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 3 })).data!.runId
+    expect(runOf(store, child).answersId).toBe(versionId)
+    await play(call, child, [choicesOf(keys, 'slip')[3]], 3)
+    expect(runOf(store, child)).toMatchObject({ answersId: versionId, status: 'done', score: 95 })
+  })
+
+  it('counts a player’s runs on every version of a seed version in the history, and no other seed version', () => {
+    const row = (createdAt: string, id: string, score: number) => ({ createdAt, data: { answersId: id, score } })
+    const rows = [
+      row('2026-11-02', 'a@v4.1', 80),
+      row('2026-11-01', 'a@v4', 60),
+      row('2026-11-03', 'a@v4', 95),
+      row('2026-11-04', 'a@v3', 100),
+      row('2026-11-05', 'b@v4', 100),
+    ]
+    expect(runHistory(rows, 'a@v4.1')).toEqual({ first: 60, best: 95 })
+    expect(runHistory(rows, 'a@v4')).toEqual({ first: 60, best: 95 })
+    expect(runHistory(rows, 'c@v4')).toBeNull()
+  })
+
+  it('keeps reasons unlocked per exact answers id: a choice tried on another version does not count', async () => {
+    const { store, call } = await withVariants()
+    draws(0, 1)
+    const first = await start(call)
+    const second = await start(call)
+    const keys = answersOf(store, answersId).wayKeys
+    const blunders = choicesOf(keys, 'blunder')
+    await play(call, first, blunders)
+    await reveal(call, first)
+    await play(call, second, [choicesOf(keys, 'best')[0], ...blunders.slice(1)])
+    await reveal(call, second)
+    const res = (await call<{ decisions: Explained[] }>('explain', 'user_a', { runId: first })).data!.decisions
+    expect(res.every((d) => d.tried === 1)).toBe(true)
+  })
+
+  it('declares the variants column, so the fake store keeps it', async () => {
+    const { store } = await withVariants()
+    expect(store.get('scenarios')!.get(SCENARIO)!.data.variants).toBe(1)
+  })
+})
+
 describe('rewind', () => {
   it('keeps the choices before the decision and refuses the same choice there again', async () => {
     const { store, call, keys } = await seeded()
@@ -454,8 +618,9 @@ describe('rewind', () => {
 
     expect((await lockIn(call, child, 2, blunders[2])).error).toBe('You chose that last time. Rewinding is for trying a different choice.')
     const second = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 2 })).data!.runId
-    await play(call, second, choicesOf(keys, 'best').slice(2), 2)
-    expect(runOf(store, second).score).toBe(100 - 40)
+    // The new choice at decision 3 finishes the run; decision 4 keeps the original blunder.
+    await play(call, second, [choicesOf(keys, 'best')[2]], 2)
+    expect(runOf(store, second)).toMatchObject({ status: 'done', score: 100 - 60, choices: [...blunders.slice(0, 2), choicesOf(keys, 'best')[2], blunders[3]] })
   })
 
   it('refuses an unfinished run, a decision out of range and an anonymous caller', async () => {
@@ -465,6 +630,84 @@ describe('rewind', () => {
     await play(call, runId, choicesOf(keys, 'best'))
     for (const decision of [-1, 4, '1']) expect((await call('rewind', 'user_a', { runId, decision })).success).toBe(false)
     expect((await call('rewind', 'anon-123', { runId, decision: 0 })).error).toBe('Sign in to play.')
+  })
+})
+
+describe('rewind keeps the later choices', () => {
+  /** The fixture run [raise, best, hit, best]: score 75, and decision 3 plays as a blunder because of the decision 1 raise. */
+  async function flagged() {
+    const { store, call, keys } = await seeded()
+    const best = choicesOf(keys, 'best')
+    const raise = findChoice(keys, 0, (w) => !!w.raises?.length)
+    const hit = findChoice(keys, 2, (w) => !!w.ifRaised)
+    const runId = await start(call)
+    await play(call, runId, [raise, best[1], hit, best[3]])
+    return { store, call, keys, best, raise, hit, runId }
+  }
+
+  it('finishes the rewound run with one choice at decision 1, decisions 2 to 4 equal to the parent’s', async () => {
+    const { store, call, best, raise, hit, runId } = await flagged()
+    const parent = runOf(store, runId)
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 0 })).data!.runId
+    expect(runOf(store, child)).toMatchObject({ status: 'playing', choices: [] })
+    const res = await lockIn<{ done: boolean }>(call, child, 0, best[0])
+    expect(res.data).toEqual({ done: true })
+    const row = runOf(store, child)
+    expect(row.choices).toEqual([best[0], best[1], hit, best[3]])
+    expect(row.choices.slice(1)).toEqual(parent.choices.slice(1))
+    expect(row).toMatchObject({ status: 'done', approach: -1, lookback: { revealed: false, hintGuess: -1, hint: '' } })
+    expect(row.outcomes).toHaveLength(4)
+    expect(row.steps).toHaveLength(4)
+    expect(row.choices[0]).not.toBe(raise)
+  })
+
+  it('replays the whole path, so an outcome that depended on the changed choice is recomputed', async () => {
+    const { store, call, keys, best, hit, runId } = await flagged()
+    const parent = runOf(store, runId)
+    expect(parent.outcomes[2]).toBe('The promise comes due.')
+    expect(parent.steps[2]).toMatchObject({ grade: 'blunder', causedBy: 0 })
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 0 })).data!.runId
+    await lockIn(call, child, 0, best[0])
+    const row = runOf(store, child)
+    expect(row.outcomes[2]).toBe('Outcome 201.')
+    expect(row.steps[2]).toEqual({ grade: 'slip', points: 5, base: 'slip', causedBy: -1 })
+    expect(row.score).toBe(95)
+    expect(row.ending).toBe('good')
+    expect(row.fix).toEqual({ decision: 2, gain: 5 })
+    expect(row.tunnel).toEqual(tunnelCounts(keys, [best[0], best[1], hit, best[3]]))
+    expect(row.beats).toBeGreaterThan(0)
+  })
+
+  it('plays on one decision at a time when the parent is missing', async () => {
+    const { store, call, keys, best, runId } = await flagged()
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 1 })).data!.runId
+    store.get('runs')!.delete(runId)
+    const first = await lockIn<{ done: boolean }>(call, child, 1, choicesOf(keys, 'slip')[1])
+    expect(first.data).toEqual({ done: false })
+    expect(runOf(store, child).status).toBe('playing')
+    expect(runOf(store, child).choices).toHaveLength(2)
+    await play(call, child, [best[2], best[3]], 2)
+    expect(runOf(store, child)).toMatchObject({ status: 'done' })
+    expect(runOf(store, child).choices).toHaveLength(4)
+  })
+
+  it('works the same when rewinding a rewound run', async () => {
+    const { store, call, best, hit, runId } = await flagged()
+    const first = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 0 })).data!.runId
+    await lockIn(call, first, 0, best[0])
+    const second = (await call<{ runId: string }>('rewind', 'user_a', { runId: first, decision: 2 })).data!.runId
+    expect(runOf(store, second)).toMatchObject({ parentRunId: first, branchAt: 2, choices: [best[0], best[1]] })
+    // The same choice as the rewound run had is still refused.
+    expect((await lockIn(call, second, 2, hit)).error).toBe('You chose that last time. Rewinding is for trying a different choice.')
+    expect((await lockIn<{ done: boolean }>(call, second, 2, best[2])).data).toEqual({ done: true })
+    expect(runOf(store, second)).toMatchObject({ status: 'done', score: 100, choices: [best[0], best[1], best[2], best[3]] })
+  })
+
+  it('still refuses the same choice at the branch, and writes nothing', async () => {
+    const { store, call, raise, runId } = await flagged()
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 0 })).data!.runId
+    expect((await lockIn(call, child, 0, raise)).error).toBe('You chose that last time. Rewinding is for trying a different choice.')
+    expect(runOf(store, child)).toMatchObject({ status: 'playing', choices: [] })
   })
 })
 
@@ -485,7 +728,7 @@ describe('explain', () => {
 
     // A rewound run with a different choice at decision 3 unlocks that decision only.
     const child = (await call<{ runId: string }>('rewind', 'user_a', { runId: first, decision: 2 })).data!.runId
-    await play(call, child, [best[2], best[3]], 2)
+    await play(call, child, [best[2]], 2)
     const two = (await call<{ decisions: Explained[] }>('explain', 'user_a', { runId: first })).data!.decisions
     expect(two.map((d) => d.unlocked)).toEqual([false, true, true, true])
     expect(two[2]).toEqual({ unlocked: true, why: 'You promised earlier.', flag: 'You promised Friday', tried: 2 })
