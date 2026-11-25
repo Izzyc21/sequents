@@ -336,7 +336,7 @@ export function tunnelCounts(wayKeys: WayAnswer[][][], choices: number[]): numbe
 }
 
 /** The hint for a run that no single change improves; a perfect run gets it too. */
-export const NO_SINGLE_FIX = 'No single change wins points back here.'
+export const NO_SINGLE_FIX = 'No single change improves the result here.'
 
 /** The hint guess that means "I would change none of them". Guesses 0-3 are decisions. */
 export const HINT_NOWHERE = DECISIONS
