@@ -55,7 +55,7 @@ export const DEADLINE_TEXT = {
     tray: [{ label: 'Internet', detail: 'connected, dropped twice' }],
     time: '11:15 PM',
     thoughts: [
-      ['Roommate', 'The internet keeps cutting out. How long have you got?'],
+      ['Roommate', "I'd be a wreck if this were my essay."],
       ['Classmate', 'Losing marks over formatting would drive me mad.'],
     ] as Thought[],
   },
