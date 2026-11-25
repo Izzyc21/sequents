@@ -133,6 +133,7 @@ export default function RunPage() {
             run={run}
             runId={id}
             parent={parent}
+            kept={keepsLaterChoices(run, parent)}
             pending={pending}
             onRewind={rewind}
             onReveal={reveal}
@@ -268,15 +269,17 @@ function Debrief({
   }, [runId])
 
   // This player's finished runs of the same scenario and seed version (read 'own': only their own rows reach the page): first try and best revealed.
-  // Newest first, so the latest runs always count; with a full window the oldest runs may be cut off, so the first try is not claimed.
-  const { records: mine } = useQuery<RunRow>('runs', {
+  // Newest first, so the latest runs always count. One row past the window is fetched only to learn whether older runs exist: when they
+  // do, the first try may be among them, so it is not claimed, and the best is labelled as covering the window only.
+  const { records: fetched } = useQuery<RunRow>('runs', {
     where: { scenarioId: run.scenarioId, status: 'done' },
     orderBy: 'createdAt',
     orderDir: 'desc',
-    limit: HISTORY_WINDOW,
+    limit: HISTORY_WINDOW + 1,
   })
+  const windowFull = fetched.length > HISTORY_WINDOW
+  const mine = useMemo(() => fetched.slice(0, HISTORY_WINDOW), [fetched])
   const history = useMemo(() => runHistory(mine, run.answersId), [mine, run.answersId])
-  const windowFull = mine.length >= HISTORY_WINDOW
 
   const lost = run.steps.reduce((sum, s) => sum + s.points, 0)
   return (
@@ -299,8 +302,9 @@ function Debrief({
         <ul className="mt-4 space-y-1 text-sm text-muted-foreground">
           {history && (
             <li data-testid="history">
-              Your first try: {windowFull ? `not in your last ${HISTORY_WINDOW} runs` : (history.first ?? 'not revealed yet')}. Best you
-              have revealed: {history.best ?? run.score}.
+              {windowFull
+                ? `Your first try: not shown (you have more than ${HISTORY_WINDOW} finished runs here). Best revealed in your last ${HISTORY_WINDOW}: ${history.best ?? run.score}.`
+                : `Your first try: ${history.first ?? 'not revealed yet'}. Best you have revealed: ${history.best ?? run.score}.`}
             </li>
           )}
           <li>This beats {run.beats}% of all possible paths.</li>

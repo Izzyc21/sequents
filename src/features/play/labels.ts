@@ -39,8 +39,3 @@ export const BAND_LINE: Record<Ending, string> = {
   ok: 'Parts of it went wrong.',
   bad: 'It went badly.',
 }
-
-/** "better", "worse" or "the same", from two scores. */
-export function comparedWith(score: number, other: number): string {
-  return score > other ? 'better' : score < other ? 'worse' : 'the same'
-}

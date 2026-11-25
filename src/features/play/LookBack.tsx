@@ -1,14 +1,14 @@
 /**
  * The look-back screen of a finished run whose score is still hidden: how it
- * went in one line, what happened at each decision, the doors the player did
- * not open, the neutral question "which decision would you change, if any?"
+ * went in one line, what happened at each decision, the other options at each
+ * decision, the neutral question "which decision would you change, if any?"
  * with a way to try a change (rewind), one optional hint, and a low-key link
  * to reveal the exact score.
  * It holds no grade, number or explanation; those come after reveal.
  */
 import { useState } from 'react'
 import { Button, cn } from '@/components/ui'
-import { BAND_LINE, choiceText, comparedWith } from './labels'
+import { BAND_LINE, choiceText } from './labels'
 import { runAction } from './runAction'
 import { fromChoice } from './engine'
 import { DECISIONS, type RunRow } from './types'
@@ -19,6 +19,7 @@ export function LookBack({
   run,
   runId,
   parent,
+  kept,
   pending,
   onRewind,
   onReveal,
@@ -28,6 +29,8 @@ export function LookBack({
   runId: string
   /** The run this one was rewound from, when it loaded. */
   parent: RunRow | undefined
+  /** True when this rewound run carried its later choices over from `parent` (keepsLaterChoices); only then are later rows marked. */
+  kept: boolean
   pending: boolean
   onRewind: (decision: number) => void
   onReveal: () => void
@@ -66,12 +69,6 @@ export function LookBack({
         </p>
         <p className="mt-2 text-foreground/90">{run.endingText}</p>
       </div>
-      {parent && (
-        <p className="mt-4 text-sm text-foreground" data-testid="compared">
-          Compared with the run you rewound: {comparedWith(run.score, parent.score)}.
-        </p>
-      )}
-
       <h3 className="mt-8 text-lg font-semibold text-foreground">Which decision would you change, if any?</h3>
       <p className="mt-1 text-sm text-muted-foreground">
         Try one and see how it plays out before you see any score. If you would keep them all, you can stop here.
@@ -79,9 +76,9 @@ export function LookBack({
       <ol className="mt-4 space-y-4" data-testid="lookback-rows">
         {run.choices.map((choice, i) => {
           const decision = run.snapshot.decisions[i]
-          const taken = fromChoice(choice).approach
+          const { approach: taken, way: wayTaken } = fromChoice(choice)
           const branch = run.branchAt >= 0 && i === run.branchAt
-          const later = parent !== undefined && run.branchAt >= 0 && i > run.branchAt
+          const later = kept && parent !== undefined && i > run.branchAt
           const same = later && parent.choices[i] === choice
           const differs = same && parent.outcomes[i] !== run.outcomes[i]
           return (
@@ -102,8 +99,13 @@ export function LookBack({
               <p className="mt-2 text-sm text-foreground/90">{run.outcomes[i]}</p>
               {differs && <p className="mt-2 text-sm font-medium text-foreground">This played out differently this time.</p>}
               <details className="mt-3 text-sm">
-                <summary className="cursor-pointer text-muted-foreground">Doors you closed</summary>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-foreground/90">
+                <summary className="cursor-pointer text-muted-foreground">Other options at this decision</summary>
+                <p className="mt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Other ways in your approach</p>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-foreground/90">
+                  {decision.approaches[taken].ways.flatMap((w, k) => (k === wayTaken ? [] : [<li key={k}>{w}</li>]))}
+                </ul>
+                <p className="mt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Other approaches</p>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-foreground/90">
                   {decision.approaches.flatMap((a, k) => (k === taken ? [] : [<li key={k}>{a.text}</li>]))}
                 </ul>
               </details>
@@ -147,7 +149,7 @@ export function LookBack({
             className="min-h-9 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
             onClick={() => setAsking(true)}
           >
-            I&apos;m stuck: give me a hint
+            Ask for a hint
           </button>
         )}
       </div>

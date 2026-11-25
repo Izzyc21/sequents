@@ -174,13 +174,13 @@ test('play, look back, reveal, rewind, compare; runs stay private; hidden text s
   await expect(lookBack.getByTestId('lookback-row')).toHaveCount(DECISIONS)
   await expect(lookBack.getByRole('heading', { name: 'Which decision would you change, if any?' })).toBeVisible()
   await expect(lookBack.getByRole('button', { name: /Change this one/ })).toHaveCount(DECISIONS)
-  await expect(lookBack.getByText('Doors you closed').first()).toBeVisible()
+  await expect(lookBack.getByText('Other options at this decision').first()).toBeVisible()
   await expect(alice.page.getByTestId('compared')).toHaveCount(0)
   await expect(alice.page.getByTestId('debrief')).toHaveCount(0)
   await expect(alice.page.locator('body')).not.toContainText(/\/ 100|biggest single fix|Every point you lost/)
 
   // 1c. One hint: pick a decision, read one line; after a reload the line stays and the link is gone.
-  await lookBack.getByRole('button', { name: "I'm stuck: give me a hint" }).click()
+  await lookBack.getByRole('button', { name: 'Ask for a hint' }).click()
   const picker = alice.page.getByRole('group', { name: 'Which decision would you change, if any?' })
   await expect(picker.getByLabel('None, I would keep them all')).toHaveCount(1)
   await expect(picker.getByRole('radio')).toHaveCount(DECISIONS + 1)
@@ -189,10 +189,10 @@ test('play, look back, reveal, rewind, compare; runs stay private; hidden text s
   await expect(alice.page.getByTestId('hint')).toHaveCount(1, { timeout: 15_000 })
   const hintLine = (await alice.page.getByTestId('hint').innerText()).replace(/^Your hint:\s*/, '')
   expect(hintLine.length).toBeGreaterThan(10)
-  await expect(alice.page.getByRole('button', { name: "I'm stuck: give me a hint" })).toHaveCount(0)
+  await expect(alice.page.getByRole('button', { name: 'Ask for a hint' })).toHaveCount(0)
   await alice.page.reload()
   await expect(alice.page.getByTestId('hint')).toContainText(hintLine, { timeout: 15_000 })
-  await expect(alice.page.getByRole('button', { name: "I'm stuck: give me a hint" })).toHaveCount(0)
+  await expect(alice.page.getByRole('button', { name: 'Ask for a hint' })).toHaveCount(0)
 
   // 1d. At the bottom only, the exact score, on request.
   const reveal = alice.page.getByRole('button', { name: 'Show my exact score' })
@@ -244,7 +244,7 @@ test('play, look back, reveal, rewind, compare; runs stay private; hidden text s
   await expect(rows.nth(2).getByText('Changed', { exact: true })).toBeVisible()
   await expect(alice.page.getByText('Same as last time', { exact: true })).toHaveCount(1)
   await expect(rows.nth(3).getByText('Same as last time', { exact: true })).toBeVisible()
-  await expect(alice.page.getByTestId('compared')).toHaveText(/^Compared with the run you rewound: (better|worse|the same)\.$/)
+  await expect(alice.page.getByTestId('compared')).toHaveCount(0)
   await expect(alice.page.locator('body')).not.toContainText(/\/ 100|biggest single fix/)
   await alice.page.getByRole('button', { name: 'Show my exact score' }).click()
   await expect(alice.page.getByTestId('debrief')).toBeVisible({ timeout: 15_000 })

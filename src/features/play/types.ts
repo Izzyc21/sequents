@@ -237,9 +237,9 @@ export interface RunRow {
 }
 
 /** Error text of the explain action for a finished run whose score has not been revealed yet. */
-export const NOT_REVEALED = 'NOT_REVEALED'
+export const NOT_REVEALED = 'Show your score first to see the reasons.'
 /** Error text of the hint action for a run whose score is already revealed (or that has no look-back state). */
-export const ALREADY_REVEALED = 'ALREADY_REVEALED'
+export const ALREADY_REVEALED = 'Your score is already showing, so there is no hint to give.'
 
 /** True when the page may show this run's score: finished and not hidden (a missing `hidden` counts as revealed). */
 export const scoreVisible = (run: Pick<RunRow, 'status' | 'hidden'>): boolean => run.status === 'done' && run.hidden !== 1
