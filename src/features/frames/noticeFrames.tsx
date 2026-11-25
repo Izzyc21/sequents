@@ -136,7 +136,7 @@ export const NOTICE_TEXT = {
     logsTitle: 'Admin console: sign-in logs',
     logs: [{ label: 'Accounts to review', value: '30 accounts' }],
     thoughts: [
-      ['Office manager', 'People are already guessing. Silence just makes the guesses worse.'],
+      ['Office manager', "If what I say now changes by noon, they'll stop listening to me."],
       ['Dana', "Please don't make me the example in front of everyone."],
     ] as Thought[],
   },
