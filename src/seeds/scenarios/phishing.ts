@@ -35,14 +35,14 @@ const FLAGS: [{ id: string; label: string }[], { id: string; label: string }[]] 
 
 const ENDINGS = [
   {
-    good: 'Dana’s account was blocked and handed back in the afternoon with her rules, methods and app access checked. The link was blocked on every laptop and the message purged, and the staff who had clicked came to you before lunch and were reset, with no money lost and nobody named.',
-    ok: 'The worst was contained and nobody lost money, but one gap stayed open for a while: a leftover sign-in method, a link that still worked off the office network, or a silent case that surfaced later. You close it by evening, and some staff trust you a little less than before.',
-    bad: 'The attacker kept a way back in, the link kept working for people off the office network, or those who clicked stayed silent. By the end of the week a fake invoice has gone to a client from Dana’s address, and you spend the next days cleaning up after the fact.',
+    good: 'The overseas session on Dana’s account was cut off within minutes, and by 10:05 the message was gone from all 30 inboxes with a copy kept for evidence. The link’s site was blocked, at least on the office network, and staff heard from you before noon without anyone being named.',
+    ok: 'The email was an attack, and parts of your response held. At least one step cost time, left a way in open for longer than it needed to be, or made people less likely to come to you. Whether that gap mattered depends on what the attacker did with it.',
+    bad: 'The email was an attack, and your response did not keep pace with it. More than one step cost time, left a way in open, or made people less likely to come to you, and at least one of them cost a lot. You will spend the coming days finding out what the attacker reached.',
   },
   {
-    good: 'Dana finished payroll before noon, and the notice turned out to be Sam’s scheduled change. You confirmed that from IT’s own records, left the link and the message alone, and told everyone how to change their password by 5 PM. Nobody was locked out and nobody was named.',
-    ok: 'The notice was real and nearly everyone changed their password in time, but something cost the office a little: a block or reset that was not needed, a payroll run that went out late, or a few people locked out at 5 PM. You sort it by evening, and Sam hears about it when he lands.',
-    bad: 'The notice was real, but by 5 PM many accounts were locked out, a block or purge had taken away the way to act on it, or payroll ran late. You spend the evening resetting passwords, and Sam lands to a busy helpdesk and a lot of questions.',
+    good: 'The notice was real: Sam’s scheduled password change, posted on the IT page the Thursday before. Nearly everyone changed their password before 5 PM, no more than three people were locked out, and nobody was named.',
+    ok: 'The notice was real: Sam’s scheduled password change. Parts of your response fit that, but at least one step cost the office time, interrupted work that did not need interrupting, or left people without clear word on what to do before the day was out. There was no attacker, so every cost was one the office paid itself.',
+    bad: 'The notice was real: Sam’s scheduled password change. More than one step cost the office time, interrupted work, or left people without clear word on what to do before the day was out, and at least one cost a lot. There was no attacker, so the disruption came from the response, not from the email.',
   },
 ] as const
 

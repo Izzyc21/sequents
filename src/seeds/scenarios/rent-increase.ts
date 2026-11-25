@@ -368,9 +368,9 @@ const draft: ScenarioDraft = {
     },
   ],
   endings: {
-    good: "You renew at $1,740 for twelve months, about 9% above your old rent instead of 15%, on paper that changes nothing else. You knew your own deadlines and fallback from the start, and you never handed him a number or a notice you couldn't take back. You keep the place and about $1,200 over the year.",
-    ok: "You stay, but on a price or paper you could have bettered. Either the rent landed higher than your case justified, or a changed clause or a new fee came along with the renewal, or you spent time and money on options you did not need.",
-    bad: "The negotiation slipped out of your hands. You showed your limits, gave a notice or a date you couldn't take back, or let his deadline pass. You end up paying close to the full 15%, signing paper you never read, or spending your savings to move for less than it cost.",
+    good: "You renew at $1,740 for twelve months, about 9% above your old rent instead of the 15% in his letter. He heard your counter and your comparisons before he settled, and you said yes before his offer lapsed. You keep the place and about $1,200 over the year.",
+    ok: "At least one step gave away money, time, leverage or a lease term you would not have chosen. A landlord notices what a tenant gives away, and he will remember it at the next renewal.",
+    bad: "The renewal got away from you. More than one step gave away money, time, leverage or lease terms you would not have chosen, and at least one gave away a lot. Whether you sign now or move, it happens more on his terms than on yours.",
   },
 }
 export default draft

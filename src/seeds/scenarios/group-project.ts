@@ -366,9 +366,9 @@ const draft: ScenarioDraft = {
     },
   ],
   endings: {
-    good: 'Dana was asked privately for whatever she had, her section was covered by owners who knew the material, and the instructor had dated records while there was still time to use them. The talk was complete, the evaluations were factual and independent, and the group ended the week on speaking terms with Dana.',
-    ok: 'The talk got done and the instructor heard about the problem, though later or less cleanly than it could have been. Some work was merged late or rushed, and one account of events was thinner than it needed to be. Grades and relationships came out mostly intact.',
-    bad: 'The group lost days waiting, guessing or arguing, and the instructor was told late or in a way they could not act on. The presentation had a visible gap or a rushed section, and the evaluations left everyone unsure what was fair.',
+    good: 'Dana’s section was covered, the instructor heard from you in writing, and your evaluation of Dana rested on dated facts rather than impressions. Whatever her reasons turn out to be, the record is fair to her and to you, and nothing you sent needs defending.',
+    ok: 'The week is over, and at least one of the four calls cost more than it had to: how Dana was asked, how her part was covered, what the instructor was told, or how she was rated. That cost was time, goodwill or credibility the group could have kept.',
+    bad: 'The week got away from the group. More than one call, from how Dana was asked to how she was rated, cost time, goodwill or credibility, and at least one cost enough to show in the talk, in what the instructor could act on, or in how Dana was treated.',
   },
 }
 export default draft

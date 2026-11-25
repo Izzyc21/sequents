@@ -354,9 +354,9 @@ const draft: ScenarioDraft = {
     },
   ],
   endings: {
-    good: 'You went around the broken Wi-Fi in minutes, got the essay uploading with a copy off the laptop, and put a timestamped copy in your instructor’s inbox before the portal crawled. The portal showed Submitted before midnight and you have the screenshot.',
-    ok: 'The essay was submitted before midnight, but you lost time or left gaps: a slow route online, a backup that ran ahead of the upload, an email sent late, or a submission you could not fully prove. It went in, but it could have gone the other way.',
-    bad: 'The essay missed its slot. Time went to the wrong fix, a polish nobody needed, or a progress bar you trusted too far. By midnight the portal showed a draft or nothing, and your only evidence is an email you must now write after the deadline.',
+    good: 'You got around the dead connection, a copy of the essay left the laptop by email while the upload ran or just before it, and your instructor had the essay in their inbox before midnight. The portal recorded your submission before the deadline.',
+    ok: 'At least one step cost minutes, battery, a backup, your word with the instructor or the submission itself. Whether the essay counts comes down to what the portal showed at midnight, and the night ran closer to that line than it needed to.',
+    bad: 'Too much of the hour went to the wrong things. More than one step cost minutes, battery, a backup, your word with the instructor or the submission itself, and at least one cost a lot. Whatever the portal showed at midnight, the hour you had at 10:58 was gone long before it.',
   },
 }
 export default draft

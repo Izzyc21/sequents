@@ -72,3 +72,23 @@ describe('phishing across its two versions', () => {
     for (const k of keys) expect(analyse(k).endings.good).toBeGreaterThan(0)
   })
 })
+
+describe('starter endings', () => {
+  const drafts = [...STARTERS, ...Object.values(STARTER_VARIANTS).flat()]
+  const named = drafts.map((d, i) => [`${d.id} (${i})`, d] as const)
+  const numbers = (text: string) => text.match(/\d[\d,.:]*\d|\d/g) ?? []
+
+  it('use no grade or score words', () => {
+    const graded = /\b(best|slips?|mistakes?|blunders?|scored?|scores|points)\b/i
+    for (const d of drafts) for (const text of Object.values(d.endings)) expect(text).not.toMatch(graded)
+  })
+
+  // A mixed or bad ending is reached by thousands of different paths, so it
+  // may not state a figure or a time that only some of those paths produce.
+  it.each(named)('%s: mixed and bad endings use only numbers the player read before choosing', (_name, d) => {
+    const known = new Set(numbers(JSON.stringify(readable(d))))
+    for (const band of ['ok', 'bad'] as const) {
+      for (const n of numbers(d.endings[band])) expect(known, `${band} ending: ${n}`).toContain(n)
+    }
+  })
+})

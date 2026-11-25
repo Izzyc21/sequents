@@ -324,9 +324,9 @@ const draft: ScenarioDraft = {
     },
   ],
   endings: {
-    good: 'Your manager heard you out before the budget closed, carried a one-page case and a clear figure to their boss, and had a counter ready when the first offer came back. You were offered $81,500 in writing. That is close to your target and well above the standard increase.',
-    ok: 'Your manager supported you, but the request reached the budget late, came without a firm figure behind it, or you took the first answer. You got an increase of about 6 percent. It helps, though the gap to the senior-level pay you researched is still open, and next year you must start earlier.',
-    bad: 'Your manager stayed friendly, but the request never gained force. The money was spent before it got to the table, your figures on record were low or loose, and little was agreed in writing. By spring you have the bigger job at nearly the same pay, with less goodwill.',
+    good: 'You put your case on one page and named a figure backed by your sources, and your manager came back with $76,000 approved. You did not leave that offer as the last word: you answered it with your data, your number, or a pay review date six months out, confirmed in writing.',
+    ok: 'The request moved, but not as far as it could have. At least one step cost you timing, leverage or goodwill, and nothing on the table yet reaches the senior-level pay your sources point to.',
+    bad: 'The request lost its force. More than one step cost you timing, leverage or goodwill, and at least one cost a lot. Nothing on the table reaches the senior-level pay your sources point to, and every later raise will build on whatever base you end up with.',
   },
 }
 export default draft

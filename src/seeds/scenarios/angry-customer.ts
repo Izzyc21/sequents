@@ -364,9 +364,9 @@ const draft: ScenarioDraft = {
     },
   ],
   endings: {
-    good: 'The technician fixes the line the next morning, and Marcus has a credit for the days lost and a refund request with a number he can quote. The callback came when the ticket said it would, after the repair, with something to report. He stays with the provider, and the record shows what was done and when.',
-    ok: 'The service comes back and the refund is filed, but the call ran longer than it needed to and a few things were left vague. Marcus is calmer than when he started, though he had to chase some of it himself. The ticket has enough in it for someone else to pick up.',
-    bad: 'Marcus ends the call angrier than he began. Some of what he was told turns out to be wrong or never gets done, and the follow-up he was led to expect does not arrive. Two days later he rings back asking to cancel, quoting what he was told.',
+    good: 'Marcus leaves the call with a technician booked for tomorrow morning, a refund request filed under a reference he can quote, and a credit for the days lost. A callback is booked on the ticket, so whoever opens it next can see what he was promised and when. He is still unhappy about the outage, but nothing he was told has to be taken back.',
+    ok: 'Marcus got some of what he called for, though not cleanly. At least one thing you said or did cost him time, trust or a follow-up call. Whether he stays with the provider may come down to how the next contact goes.',
+    bad: 'Too much of the call went against Marcus for the parts that worked to carry it. More than one thing you said or did cost him time, trust or a follow-up call, and at least one cost him a lot. If he rings back, he starts that call with less patience than he had today.',
   },
 }
 export default draft
