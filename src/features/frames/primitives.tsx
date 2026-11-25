@@ -6,9 +6,22 @@
 import { Children, type CSSProperties, type ReactNode } from 'react'
 import { FILLS, INK, LINE, PAPER, SHADOW, type Fill } from './palette'
 
-/** Renders one node per item, with React-assigned identities. */
+/**
+ * Renders one node per item, with React-assigned identities. It walks the
+ * positions rather than the items, so an item that is itself a list stays one item.
+ */
 export function Each<T>({ items, render }: { items: T[]; render: (item: T, index: number) => ReactNode }) {
-  return <>{Children.toArray(items.map(render))}</>
+  return <>{Children.map(items.map((_, i) => i), (i: number) => render(items[i], i))}</>
+}
+
+/** Wraps one picture: a spoken-out description for screen readers, then the picture itself. */
+export function Scene({ description, children }: { description: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="sr-only">{description}</p>
+      {children}
+    </div>
+  )
 }
 
 /** Slight tilt shared by pieces; degrees, kept small. */

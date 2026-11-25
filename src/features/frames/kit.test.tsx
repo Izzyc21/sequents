@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
-import { Browser, Calendar, Character, Clock, EmailView, Laptop, Letter, Panel, Phone, Router, SpeechBubble, StickyNote, Toast, Tray } from './kit'
+import { describe, expect, it, vi } from 'vitest'
+import { Browser, Calendar, Character, Clock, ConsoleCard, Each, EmailView, InboxList, Laptop, Letter, LogTable, Panel, Phone, Router, Scene, SpeechBubble, StatTile, StickyNote, Toast, Tray } from './kit'
 import { sampleEmailFrame } from './settingEmail'
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(<>{node}</>)
@@ -55,5 +55,46 @@ describe('frame kit', () => {
     expect(out).toContain('support@harlowfinch.example')
     expect(out).toContain('Link goes to')
     expect(out).toContain('https://harlowfinch.example/password')
+  })
+
+  it('draws the inbox list, log table, console card and tile with every word as text', () => {
+    const out = html(
+      <Scene description="Scene words">
+        <InboxList
+          title="Mail list"
+          rows={[
+            { time: '9:05 AM', from: 'Sender One', subject: 'Subject One', unread: true },
+            { time: 'Tue', from: 'Sender Two', subject: 'Subject Two' },
+          ]}
+        />
+        <LogTable title="Log title" columns={['Time', 'City']} rows={[['9:19 AM', 'Newark']]} />
+        <ConsoleCard title="Card title" rows={[{ label: 'Domain', value: 'one.test' }]} />
+        <StatTile>Tile words</StatTile>
+      </Scene>,
+    )
+    for (const words of ['Scene words', 'Mail list', '9:05 AM', 'Sender One', 'Subject One', '(unread)', 'Sender Two', 'Subject Two', 'Log title', 'Time', 'City', '9:19 AM', 'Newark', 'Card title', 'Domain', 'one.test', 'Tile words']) {
+      expect(out).toContain(words)
+    }
+    expect(out).toContain('<table')
+    expect(out).toContain('<dl')
+    expect(out).toMatch(/<p class="sr-only">Scene words<\/p>/)
+  })
+
+  it('reads a clock time that has AM or PM after it', () => {
+    const out = html(<Clock time="10:58 PM" />)
+    expect(out).toContain('10:58 PM')
+    expect(out).not.toContain('NaN')
+  })
+
+  it('draws a list of lists one row per item and logs no warning', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const out = html(
+      <ul>
+        <Each items={[['a1', 'a2'], ['b1']]} render={(row) => <li>{row.join('+')}</li>} />
+      </ul>,
+    )
+    expect(out).toBe('<ul><li>a1+a2</li><li>b1</li></ul>')
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
   })
 })

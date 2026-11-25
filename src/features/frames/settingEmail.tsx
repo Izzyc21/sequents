@@ -3,7 +3,8 @@
  * The sender, link address and dates are inputs, so a scenario can draw the
  * same email layout for each of its versions. Registered nowhere yet.
  */
-import { EmailView, Panel, Character } from './kit'
+import type { ReactNode } from 'react'
+import { EmailView, Panel, Character, Each } from './kit'
 import type { FrameSpec } from './types'
 
 export interface ArrivedEmail {
@@ -15,10 +16,21 @@ export interface ArrivedEmail {
   linkUrl: string
   /** Caption under the picture: when it arrived and where. */
   caption: string
+  /** Words on the link button; the sample wording when left out. */
+  linkLabel?: string
+  /** Body paragraphs; the sample wording when left out. */
+  body?: string[]
 }
 
+const SAMPLE_BODY = [
+  'Hello,',
+  'Your Harlow & Finch email password expires today at 5:00 PM.',
+  'Sign in and choose a new password before then so your account keeps working.',
+  'IT Support',
+]
+
 /** The email as the inbox shows it, with the reader beside it. */
-export function EmailArrived({ email }: { email: ArrivedEmail }) {
+export function EmailArrived({ email, aside }: { email: ArrivedEmail; aside?: ReactNode }) {
   return (
     <Panel caption={email.caption} fill="sky">
       <EmailView
@@ -27,17 +39,16 @@ export function EmailArrived({ email }: { email: ArrivedEmail }) {
         to={email.to}
         subject={email.subject}
         date={email.date}
-        link={{ label: 'Update password now', url: email.linkUrl }}
+        link={{ label: email.linkLabel ?? 'Update password now', url: email.linkUrl }}
         tilt={-0.6}
       >
-        <p className="m-0">Hello,</p>
-        <p className="m-0">Your Harlow &amp; Finch email password expires today at 5:00 PM.</p>
-        <p className="m-0">Sign in and choose a new password before then so your account keeps working.</p>
-        <p className="m-0">IT Support</p>
+        <Each items={email.body ?? SAMPLE_BODY} render={(line) => <p className="m-0">{line}</p>} />
       </EmailView>
-      <div className="flex justify-end">
-        <Character name="You" mood="calm" shirt="#a6dcb8" />
-      </div>
+      {aside ?? (
+        <div className="flex justify-end">
+          <Character name="You" mood="calm" shirt="#a6dcb8" />
+        </div>
+      )}
     </Panel>
   )
 }

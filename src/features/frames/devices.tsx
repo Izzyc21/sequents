@@ -47,9 +47,9 @@ export function Router({ name, lights, tilt }: { name: string; lights: Light[]; 
   )
 }
 
-/** Hand angles for a time written "H:MM". */
+/** Hand angles for a time written "H:MM", with or without AM or PM after it. */
 function handAngles(time: string): { hour: number; minute: number } {
-  const [h, m] = time.split(':').map(Number)
+  const [h, m] = time.split(':').map((part) => Number.parseInt(part, 10))
   return { hour: ((h % 12) + m / 60) * 30, minute: m * 6 }
 }
 
