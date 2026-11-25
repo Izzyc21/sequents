@@ -2,9 +2,9 @@ import type { ScenarioDraft } from '../../features/play/types'
 
 const draft: ScenarioDraft = {
   id: 'starter-group-project',
-  title: 'A teammate goes silent before the group presentation',
+  title: 'A teammate has not replied in a week before the group presentation',
   situation:
-    "Our group of four presents on Monday, and Dana, who owes us a quarter of the talk, hasn't answered anyone in a week.",
+    "Our group of four presents on Monday, and Dana, who agreed to write a quarter of the talk, hasn't answered anyone in a week.",
   setting:
     'It is Wednesday morning in an upper-level course. Your group of four presents Monday at 10:00. Last Wednesday Dana said in the group chat she would draft the methods and results section, about a quarter of the talk, by the weekend. Nothing has arrived, the shared doc shows no edits from her, and she has not answered anyone since. So far everyone has written only in the group chat. A peer evaluation follows the presentation. You made the shared folder; Priya and Marcus are waiting to see what you do.',
   flags: [
@@ -87,7 +87,7 @@ const draft: ScenarioDraft = {
               why: 'Worry is a decent motive, but probing others about her private life invites gossip and costs trust. The project needs a clear ask from you, not answers from them.',
             },
             {
-              text: 'Email the instructor that she has gone quiet and ask whether they know anything about her situation',
+              text: 'Email the instructor that she has not replied in a week and ask whether they know anything about her situation',
               grade: 'blunder',
               outcome:
                 'The instructor replies that they cannot discuss a student\'s circumstances and asks what the group has tried. Dana is now on the instructor\'s radar before anyone has asked her anything.',
@@ -112,7 +112,7 @@ const draft: ScenarioDraft = {
               why: 'A fixed time plus an outline limits the damage, but half a day of her section sat idle waiting for someone who has stopped answering. Starting the work tonight would have used that time.',
             },
             {
-              text: 'Hold the slot until Saturday night, since presenting without her would be unfair to her',
+              text: 'Hold the slot until Saturday night, to leave her as much time as possible to send it',
               grade: 'mistake',
               outcome:
                 'Saturday night passes with no word. Priya and Marcus write what they can in a rush, the parts differ in style, and there is time for one hurried run-through.',
@@ -230,7 +230,7 @@ const draft: ScenarioDraft = {
               why: 'You asked the instructor to do the chasing. Instructors first want to see what the group has tried and what it plans.',
             },
             {
-              text: 'Ask the instructor to confirm that her silence will count against her individual grade',
+              text: 'Ask the instructor to confirm how her missing section will count toward her individual grade',
               grade: 'mistake',
               outcome:
                 'The instructor replies that grades come from the work and the peer evaluations, not from a promise made in advance, and that the group should deal with the assignment first.',

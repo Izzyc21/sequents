@@ -4,7 +4,7 @@ const draft: ScenarioDraft = {
   id: 'starter-angry-customer',
   title: 'Two days offline and billed twice',
   situation:
-    'You work phone support at a small internet provider. A customer is shouting that his service has been down two days and that he was charged twice this month.',
+    'You work phone support at a small internet provider. A customer calls to say his service has been down two days and that he was charged twice this month.',
   setting:
     'You are a tier 1 phone agent at Brightline Broadband, a small regional internet provider. Marcus Hill works from home and has been offline for two days. At your desk you can see accounts and billing, run a remote line test, send a refresh to a modem, book technician visits and apply service credit. Billing handles refunds. Your team lead is on the floor. Calls are recorded.',
   flags: [
@@ -98,7 +98,7 @@ const draft: ScenarioDraft = {
     },
     {
       prompt:
-        'Marcus is quieter and asks when he will be back online. Your screen shows the area outage marked repaired yesterday evening, and the reports under it, his included, were closed with it.',
+        'Marcus asks when he will be back online. Your screen shows the area outage marked repaired yesterday evening, and the reports under it, his included, were closed with it.',
       approaches: [
         {
           text: 'Run a remote test on his line and decide the next step from the result',
@@ -160,7 +160,7 @@ const draft: ScenarioDraft = {
           ],
         },
         {
-          text: 'Hand it to the network team, since the outage may have been closed too early',
+          text: 'Hand it to the network team, since his report was closed along with the outage',
           ways: [
             {
               text: 'Log it with the network team as an early closure, with full notes, and tell him they will call when they know more',
@@ -273,7 +273,7 @@ const draft: ScenarioDraft = {
     },
     {
       prompt:
-        'Marcus has stopped shouting. Before he hangs up he says: "Two days of nothing. Where does that leave me?" Whatever you have arranged so far, the call is nearly over.',
+        'Marcus has stopped talking over you. Before he hangs up he says: "Two days of nothing. Where does that leave me?" Whatever you have arranged so far, the call is nearly over.',
       approaches: [
         {
           text: 'Apply the credit for the days lost and book the callback now',

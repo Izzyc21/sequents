@@ -2,8 +2,8 @@ import type { ScenarioDraft } from '../../features/play/types'
 
 const draft: ScenarioDraft = {
   id: 'starter-wifi-deadline',
-  title: 'The laptop loses Wi-Fi an hour before the essay is due',
-  situation: 'My laptop dropped off the Wi-Fi an hour before my essay is due on the course portal.',
+  title: 'The laptop has no internet an hour before the essay is due',
+  situation: 'My laptop shows Wi-Fi connected but loads nothing, an hour before my essay is due on the course portal.',
   setting:
     "It's 10:58 PM. Your essay is due at midnight on the course portal. Your Windows laptop says Wi-Fi is connected but nothing loads; the same thing happened for a few minutes on Tuesday. Your Android phone is on the desk at 21 percent, with full cell service. The portal texts a login code to your phone. The essay is saved, but two citations are still unformatted and the rubric grades citation style.",
   flags: [{ id: 'hotspot-on-battery', label: "You ran the hotspot on the phone's battery" }],
@@ -69,10 +69,10 @@ const draft: ScenarioDraft = {
           ways: [
             {
               text: 'Plug the phone into the laptop with its charging cable and turn on USB tethering',
-              grade: 'best',
+              grade: 'mistake',
               outcome:
-                "The laptop shows a new wired network within seconds and the portal's login page loads. The phone charges while it shares, and the texted code arrives at once. You are signed in at 11:01.",
-              why: "A cable skips the laptop's Wi-Fi adapter, which may be what is failing, and keeps the 21 percent phone charging; you still need it for login codes. A hotspot lacks both advantages.",
+                'The laptop shows a new wired network, but pages will not load: the USB network driver Windows installed at 10:31 is waiting for a restart. You find the notice at 11:07, restart, and the portal loads at 11:11.',
+              why: 'Windows had installed a driver that needs a restart before it works, and the laptop said so. A cable cannot help while the driver waits. Read what the laptop is already telling you before you plug anything in.',
             },
             {
               text: "Turn on the phone's Wi-Fi hotspot and join it from the network list in the laptop's menu",
@@ -84,10 +84,10 @@ const draft: ScenarioDraft = {
             },
             {
               text: 'Plug the phone in, turn on USB tethering, then restart the laptop so Windows sets up the network cleanly',
-              grade: 'mistake',
+              grade: 'best',
               outcome:
-                'The restart takes four minutes. The laptop comes back, but the phone switched tethering off when the cable reset, so you turn it on again. The portal loads at 11:07.',
-              why: 'The tether needed no restart, since Windows adds the new network on its own. Rebooting cost minutes, and a cable that resets can leave tethering switched off on the phone.',
+                'The restart takes two minutes and Windows finishes the driver update on the way up. The wired network comes up with internet; you switch tethering back on, as the reset turned it off, and the portal loads at 11:03.',
+              why: 'Tonight’s update left a restart pending for the USB network driver, so tethering could not work until it ran. Restarting with the cable already in fixed that in one go, and the phone kept charging.',
             },
           ],
         },
@@ -266,10 +266,10 @@ const draft: ScenarioDraft = {
         'At 11:55 PM the upload bar finally reaches 100% and the page reloads showing your file. Five minutes left. What do you do?',
       approaches: [
         {
-          text: 'Wrap up and let people know the essay is in',
+          text: 'Wrap up and tell your instructor about the upload',
           ways: [
             {
-              text: 'Email the instructor that the essay went through and ask them to confirm they can see it',
+              text: 'Email the instructor that you uploaded the essay and ask them to confirm they can see it',
               grade: 'mistake',
               outcome:
                 'The email goes at 11:56 saying it went through. By morning the portal still lists the file as a draft, so what you told the instructor was not true.',
@@ -316,7 +316,7 @@ const draft: ScenarioDraft = {
               },
             },
             {
-              text: 'See your file name and size listed on the page, take that as proof the essay is in, and close the tab',
+              text: 'See your file name and size listed on the page, then close the tab',
               grade: 'mistake',
               outcome:
                 "The name and size are listed, so you close the laptop at 11:56. At midnight the status under it still reads 'Draft', which the portal does not count as submitted.",

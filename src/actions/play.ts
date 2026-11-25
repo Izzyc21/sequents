@@ -67,7 +67,7 @@ const OLD_RUN = 'This run is from an older version of sequents and cannot contin
 const SIGN_IN = 'Sign in to play.'
 
 /** Bump when starter text changes; the next seed writes a new version of every starter. */
-export const SEED_VERSION = 4
+export const SEED_VERSION = 5
 
 /** recordId of a starter's answers for one seed version; `n` is the hidden version (0 is the main one). */
 export const starterAnswersId = (scenarioId: string, version: number, n = 0) =>

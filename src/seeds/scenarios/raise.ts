@@ -4,7 +4,7 @@ const draft: ScenarioDraft = {
   id: 'starter-raise',
   title: 'Asking your manager for a raise',
   situation:
-    "I've been doing a bigger job for months at the same pay, and I want to ask my manager for a raise without hurting the relationship.",
+    "I've been doing a bigger job for months at the same pay, and I want to ask my manager for a raise.",
   setting:
     "You are a client services coordinator, 18 months in. Four months ago a senior colleague left and you took over her client reporting and the training of new hires; your title and $72,000 pay did not change. Reviews are held each March. Last spring most people got about 3 percent, and a teammate who asked for more in April was told the money was already spoken for. Two salary sources list your role in your city at both levels: your current title at $68,000 to $75,000, the senior version at $78,000 to $86,000. You would be glad with $80,000.",
   flags: [
@@ -137,7 +137,7 @@ const draft: ScenarioDraft = {
           ],
         },
         {
-          text: 'Build it around fairness against what similar colleagues are paid',
+          text: 'Build it around what similar colleagues are paid',
           ways: [
             {
               text: "Show where you sit in your company's pay band for your level, using the HR guide",
@@ -146,13 +146,13 @@ const draft: ScenarioDraft = {
               why: 'A band describes the limits of your level, not of the larger job you now do, and it hands your manager a ready reason to say no.',
             },
             {
-              text: 'Tell your manager you have heard that teammates at your level earn more, without naming anyone',
+              text: 'Tell your manager you have heard that teammates at your level are paid differently, without naming anyone',
               grade: 'mistake',
               outcome: "Your manager says they cannot discuss anyone else's pay and asks who said it. The meeting turns to the rumour instead of your work.",
               why: 'A rumour cannot be checked, and it invites a defence of fairness instead of an assessment of your value.',
             },
             {
-              text: 'Share the pay a teammate confided to you and say what you know of their duties, to show the gap',
+              text: 'Share the pay a teammate confided to you and say what you know of their duties, to compare',
               grade: 'blunder',
               outcome: 'Your manager is visibly uncomfortable. The teammate is asked about it later and is upset with you, and your manager grows wary of what else you repeat.',
               why: 'It exposes a colleague and breaks a confidence, costing trust with both, whatever the facts. Pay for the work you do should rest on outside data, not a peer\'s secret.',
@@ -246,7 +246,7 @@ const draft: ScenarioDraft = {
       prompt: "A week later your manager calls you in. 'I got $76,000 approved, effective next month. It is what I could get this cycle. Can I tell HR you are on board?'",
       approaches: [
         {
-          text: 'Say yes to the $76,000 and use the goodwill to secure next steps',
+          text: 'Say yes to the $76,000 and ask about next steps',
           ways: [
             {
               text: 'Accept with thanks and ask for a pay review date, in writing, six months from now',

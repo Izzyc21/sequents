@@ -2,7 +2,7 @@ import type { ScenarioDraft } from '../../features/play/types'
 
 const draft: ScenarioDraft = {
   id: 'starter-rent-increase',
-  title: 'Your landlord raises the rent 15% at renewal',
+  title: 'Your landlord’s renewal letter offers a rent 15% higher',
   situation:
     "My landlord says my rent goes up 15% when my lease renews in 60 days, and I'm not sure what my options are.",
   setting:
@@ -17,7 +17,7 @@ const draft: ScenarioDraft = {
         'The letter is on your kitchen table and the landlord has said nothing else. How do you start?',
       approaches: [
         {
-          text: 'Answer him promptly, while things are friendly and he is waiting to hear from you',
+          text: 'Answer him promptly, since he is waiting to hear from you',
           ways: [
             {
               text: 'Email him a brief note saying you got the letter and will answer by a date you name',
@@ -100,7 +100,7 @@ const draft: ScenarioDraft = {
     },
     {
       prompt:
-        'A few days later you decide to push back on the increase rather than accept it. What do you want your case to rest on?',
+        'A few days later you decide to ask for a lower number rather than accept it. What do you want your case to rest on?',
       approaches: [
         {
           text: 'Show him it costs less to keep you than to replace you',
@@ -251,7 +251,7 @@ const draft: ScenarioDraft = {
           text: 'Let the calendar do some work: time your move to his deadline and your lease\'s end',
           ways: [
             {
-              text: 'Send your counter on the last day of his window, so he has little time to dig in',
+              text: 'Send your counter on the last day of his window, so he has little time to reply',
               grade: 'mistake',
               outcome:
                 'He answers that his window has closed and $1,840 now stands. After two days of back and forth he agrees to talk, but the early weeks are lost.',

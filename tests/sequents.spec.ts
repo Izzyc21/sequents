@@ -31,6 +31,7 @@ import type { Page } from '@playwright/test'
 import { test, expect, loadAllTestAccounts } from 'deepspace/testing'
 import { STARTERS } from '../src/seeds/starters'
 import { SEED_VERSION, starterAnswersId } from '../src/actions/play'
+import { STARTER_VARIANTS } from '../src/seeds/variants'
 import { seededRandom, shuffleDraft } from '../src/features/play/engine'
 import { DECISIONS, type DraftWay, type ScenarioDraft } from '../src/features/play/types'
 
@@ -47,7 +48,7 @@ const starter: ScenarioDraft = shuffleDraft(raw, seededRandom(starterAnswersId(r
 const wayTexts = (w: DraftWay, keys: ('why' | 'outcome')[]) => keys.flatMap((k) => [w[k], ...(w.ifRaised ? [w.ifRaised[k]] : [])])
 const hiddenEndings = (s: ScenarioDraft) => [s.endings.good, s.endings.ok, s.endings.bad, ...s.flags.map((f) => f.label)]
 /** Hidden text of the starters nobody plays here, which must never arrive. */
-const neverSent = STARTERS.filter((s) => s.id !== raw.id).flatMap((s) => [
+const neverSent = [...STARTERS.filter((s) => s.id !== raw.id), ...Object.values(STARTER_VARIANTS).flat()].flatMap((s) => [
   ...s.decisions.flatMap((d) => d.approaches.flatMap((a) => a.ways.flatMap((w) => wayTexts(w, ['why', 'outcome'])))),
   ...hiddenEndings(s),
 ])

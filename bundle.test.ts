@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { STARTERS } from './src/seeds/starters'
+import { STARTER_VARIANTS } from './src/seeds/variants'
 
 const CLIENT = fileURLToPath(new URL('./dist/client', import.meta.url))
 
@@ -24,8 +25,8 @@ function files(dir: string): string[] {
   })
 }
 
-/** Every hidden string of every starter. */
-const hidden = STARTERS.flatMap((s) => [
+/** Every hidden string of every starter, hidden versions included. */
+const hidden = [...STARTERS, ...Object.values(STARTER_VARIANTS).flat()].flatMap((s) => [
   ...s.decisions.flatMap((d) =>
     d.approaches.flatMap((a) => a.ways.flatMap((w) => [w.why, w.outcome, ...(w.ifRaised ? [w.ifRaised.why, w.ifRaised.outcome] : [])])),
   ),

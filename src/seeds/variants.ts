@@ -1,4 +1,5 @@
 import type { ScenarioDraft } from '../features/play/types'
+import { phishingVersion1 } from './scenarios/phishing'
 
 /**
  * Extra hidden versions of a starter, keyed by the starter's id. Each draft
@@ -7,4 +8,6 @@ import type { ScenarioDraft } from '../features/play/types'
  * (grades, flags, outcomes, whys, endings). startRun gives each run one
  * version at random; the player cannot choose.
  */
-export const STARTER_VARIANTS: Record<string, ScenarioDraft[]> = {}
+export const STARTER_VARIANTS: Record<string, ScenarioDraft[]> = {
+  'starter-phishing': [phishingVersion1],
+}
