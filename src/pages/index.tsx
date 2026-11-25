@@ -13,9 +13,9 @@ import { APP_NAME } from '../constants'
 import { seo } from '../seo'
 
 const STEPS = [
-  { title: 'Play', text: 'Pick a scenario: asking for a raise, a phishing email at work, a rent increase. Four decisions: at each, choose what you do, then exactly how.' },
-  { title: 'See every lost point', text: 'You start at 100. The debrief lists each point you lost, which earlier choice made a later one worse, and your biggest single fix.' },
-  { title: 'Rewind and compare', text: 'Go back to any decision and try another line. Reasons unlock once you have tried two choices at a decision, so you work it out first.' },
+  { title: 'Play', text: 'Pick a scenario: asking for a raise, a "password expires today" email at work, a rent renewal. Four decisions: at each, choose what you do, then exactly how.' },
+  { title: 'Look back', text: 'When it ends you see what happened at each decision and how it went overall, not a score. Then pick the decision you would change.' },
+  { title: 'Rewind and continue', text: 'Change that one decision; your later choices stay and play out again from there. Reasons unlock once you have tried two choices at a decision.' },
 ]
 
 export default function Landing() {
@@ -29,7 +29,7 @@ export default function Landing() {
         </h1>
         <p className="mb-10 max-w-lg text-muted-foreground">
           Practise the decision before it happens. Every option is something a sensible person might do, and only one is
-          best, so a first try rarely scores 100.
+          best, so a first try rarely goes the whole way right.
         </p>
         <ol className="mb-10 grid max-w-4xl gap-4 text-left sm:grid-cols-3">
           {STEPS.map((step, i) => (
