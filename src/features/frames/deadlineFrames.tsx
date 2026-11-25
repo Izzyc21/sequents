@@ -56,7 +56,7 @@ export const DEADLINE_TEXT = {
     time: '11:15 PM',
     thoughts: [
       ['Roommate', 'Just hand it in. Nobody loses marks over two citations.'],
-      ['Classmate', "I'm rereading mine one last time before I upload."],
+      ['Classmate', 'Once those two are done, check every other reference too. Graders notice.'],
     ] as Thought[],
   },
   d3: {
@@ -67,7 +67,7 @@ export const DEADLINE_TEXT = {
     classmate: ['Classmate', 'mine is stuck too'],
     time: '11:42 PM',
     thoughts: [
-      ['Classmate', "I'll keep hitting submit until it goes through."],
+      ['Classmate', "Send the instructor a link to it in your drive. It's quicker than attaching."],
       ['Roommate', 'Ask the instructor first. Emailing it without asking looks like an excuse.'],
     ] as Thought[],
   },
