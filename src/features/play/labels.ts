@@ -32,3 +32,15 @@ export function choiceText(decision: { approaches: { text: string; ways: string[
   const approach = decision.approaches[Math.floor(choice / 3)]
   return approach ? `${approach.text} → ${approach.ways[choice % 3]}` : ''
 }
+
+/** The one line the look-back screen gives about how a run went, in place of the score. */
+export const BAND_LINE: Record<Ending, string> = {
+  good: 'It went well.',
+  ok: 'Parts of it went wrong.',
+  bad: 'It went badly.',
+}
+
+/** "better", "worse" or "the same", from two scores. */
+export function comparedWith(score: number, other: number): string {
+  return score > other ? 'better' : score < other ? 'worse' : 'the same'
+}

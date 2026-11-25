@@ -443,11 +443,12 @@ describe('fake record tools', () => {
 describe('hidden versions', () => {
   const versionId = starterAnswersId(SCENARIO, SEED_VERSION, 1)
 
-  /** A second version of the fixture: same readable text, the best and slip ways swapped at the last decision. */
+  /** A second version of the fixture: same readable text, with other grades at the last decision. */
   function variantDraft() {
     const draft = fixture(SCENARIO)
     const ways = draft.decisions[3].approaches[0].ways
     ;[ways[0].grade, ways[1].grade] = [ways[1].grade, ways[0].grade]
+    ways[2].grade = 'best'
     ways[0].outcome = 'A different outcome.'
     draft.endings.good = 'A different good ending.'
     return draft
@@ -482,9 +483,9 @@ describe('hidden versions', () => {
   it('writes one answers row per version and the same readable row as a starter with no versions', async () => {
     const plain = await seeded()
     const { store } = await withVariants()
-    const { variants, ...readable } = store.get('scenarios')!.get(SCENARIO)!.data
+    const { variants, guessAverage: _mean, ...readable } = store.get('scenarios')!.get(SCENARIO)!.data
     expect(variants).toBe(1)
-    const { variants: none, ...plainReadable } = plain.store.get('scenarios')!.get(SCENARIO)!.data
+    const { variants: none, guessAverage: _plain, ...plainReadable } = plain.store.get('scenarios')!.get(SCENARIO)!.data
     expect(none).toBe(0)
     expect(readable).toEqual(plainReadable)
     expect(readable.answersId).toBe(answersId)
@@ -494,6 +495,20 @@ describe('hidden versions', () => {
     // Same order in both, only the hidden half differs: the same way texts sit at the same places.
     const texts = (ans: ScenarioAnswers) => ans.wayKeys.map((d) => d.map((a) => a.map((w) => w.outcome === 'A different outcome.')))
     expect(texts(answersOf(store, versionId)).flat(2).filter(Boolean)).toHaveLength(1)
+  })
+
+  it('sets the readable average to the mean over every version, and keeps the main version’s value when there is only one', async () => {
+    const plain = await seeded()
+    const { store } = await withVariants()
+    const mainAverage = analyse(answersOf(store, answersId).wayKeys).guessAverage
+    const variantAverage = analyse(answersOf(store, versionId).wayKeys).guessAverage
+    expect(variantAverage).not.toBe(mainAverage)
+    expect(store.get('scenarios')!.get(SCENARIO)!.data.guessAverage).toBe(Math.round(((mainAverage + variantAverage) / 2) * 10) / 10)
+    expect(plain.store.get('scenarios')!.get(SCENARIO)!.data.guessAverage).toBe(analyse(plain.keys).guessAverage)
+    // A run's snapshot copies the readable row's figure.
+    draws(1)
+    const runId = await start(caller(store))
+    expect(runOf(store, runId).snapshot.guessAverage).toBe(store.get('scenarios')!.get(SCENARIO)!.data.guessAverage)
   })
 
   it('refuses to seed a starter whose hidden version has different readable text, writing none of it', async () => {

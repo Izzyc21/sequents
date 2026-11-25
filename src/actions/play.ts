@@ -92,10 +92,10 @@ function randomBelow(count: number): number {
  * so every worker writes the same order. A starter may have extra hidden
  * versions in `variants` (keyed by starter id): each is shuffled with the
  * same seed as the main draft, so its readable half must come out identical
- * to the main one (the average-score figure aside, which belongs to the main
- * version); a starter whose versions differ is not written and the seed
- * fails. Each version gets its own answers row, written before the readable
- * row is pointed at them: a failure in between leaves the old text with the
+ * to the main one (apart from the average-score figure, which the readable
+ * row sets to the mean over all versions); a starter whose versions differ is
+ * not written and the seed fails. Each version gets its own answers row,
+ * written before the readable row is pointed at them: a failure in between leaves the old text with the
  * old answers, and runs already started keep their own answers. Versions only
  * move forward: a worker still running older code never writes an older
  * version over a newer one. A starter is skipped only when it is at this
@@ -132,8 +132,11 @@ export async function seedStarterRows(
       const a = await tools.create('scenario_answers', { scenarioId: id, ...parts[n].answers }, starterAnswersId(id, version, n))
       if (!a.success) return saveFailed('seedStarters', a.error)
     }
+    // The readable row's average is the mean over every version, so it fits whichever one a run gets.
+    const guessAverage = Math.round((parts.reduce((sum, p) => sum + p.scenario.guessAverage, 0) / parts.length) * 10) / 10
     const row: ScenarioRow = {
       ...parts[0].scenario,
+      guessAverage,
       format: FORMAT,
       visibility: 'public',
       starter: true,

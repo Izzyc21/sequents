@@ -21,7 +21,7 @@ import { useAuth, useQuery, useUser } from 'deepspace'
 import { Badge, Button, ConfirmModal, EmptyState, useToast } from '@/components/ui'
 import { ENDING_BADGE, ENDING_LABEL } from '../../../features/play/labels'
 import { runAction } from '../../../features/play/runAction'
-import { CHOICES, DECISIONS, FORMAT, WRITING_ENABLED, type RunRow, type ScenarioRow, type Visibility } from '../../../features/play/types'
+import { CHOICES, DECISIONS, FORMAT, scoreVisible, WRITING_ENABLED, type RunRow, type ScenarioRow, type Visibility } from '../../../features/play/types'
 import { WriteYourOwn } from '../../../features/play/WriteYourOwn'
 
 export default function Home() {
@@ -147,8 +147,8 @@ export default function Home() {
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Rehearse a hard moment</h1>
         <p className="mt-1 max-w-2xl text-muted-foreground">
           Four decisions. At each one, pick what you do, then exactly how. Every choice is something a sensible person
-          might do; only one is best. You start at 100 and lose points for each weaker choice. At the end you see every
-          point you lost, and you can rewind any decision to find a better line.
+          might do; only one is best. When it ends you look back at what happened, without a score, and you can
+          rewind any decision to try a different line.
         </p>
       </header>
 
@@ -167,7 +167,9 @@ export default function Home() {
                       {r.data.branchAt >= 0 ? `Rewound to decision ${r.data.branchAt + 1}` : 'First run'}
                     </span>
                   </span>
-                  {r.data.status === 'done' && r.data.ending ? (
+                  {r.data.status === 'done' && r.data.ending && !scoreVisible(r.data) ? (
+                    <Badge variant="secondary">Look back</Badge>
+                  ) : r.data.status === 'done' && r.data.ending ? (
                     <Badge variant={ENDING_BADGE[r.data.ending]}>
                       {r.data.score} / 100 · {ENDING_LABEL[r.data.ending]}
                     </Badge>

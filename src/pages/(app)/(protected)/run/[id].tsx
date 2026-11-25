@@ -1,21 +1,35 @@
 /**
- * /run/:id: play a run, then read the debrief and rewind.
+ * /run/:id: play a run, look back at it, rewind, then read the debrief.
  *
  * The run comes live from the `runs` collection (players can read only their
  * own). Each decision is two steps: commit to an approach (no switching
- * after), then pick one of its ways and lock it in. The commit, the lock-in
- * and rewinds all go through actions; when one lands, the server updates the
- * run row and this page re-renders from it, so a reload shows the same
- * committed approach. The score stays hidden until the last decision.
+ * after), then pick one of its ways and lock it in. The commit, the lock-in,
+ * rewinds, hints and the reveal all go through actions; when one lands, the
+ * server updates the run row and this page re-renders from it, so a reload
+ * shows the same committed approach. A finished run shows the look-back
+ * screen (no score) until the player asks for the exact score, then the
+ * debrief with the tunnel strip.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from 'deepspace'
 import { Badge, Button, cn, useToast } from '@/components/ui'
+import { EarlierFrames, Frame } from '../../../../features/frames'
 import type { Explained } from '../../../../actions/play'
 import { choiceText, ENDING_BADGE, ENDING_LABEL, GRADE_BADGE, gradeLine, scoreSum } from '../../../../features/play/labels'
+import { LookBack } from '../../../../features/play/LookBack'
 import { runAction } from '../../../../features/play/runAction'
-import { committedApproach, DECISIONS, FORMAT, WAYS, type PublicDecision, type RunRow } from '../../../../features/play/types'
+import { Tunnel } from '../../../../features/play/Tunnel'
+import {
+  committedApproach,
+  DECISIONS,
+  FORMAT,
+  runHistory,
+  scoreVisible,
+  WAYS,
+  type PublicDecision,
+  type RunRow,
+} from '../../../../features/play/types'
 
 export default function RunPage() {
   const { id = '' } = useParams()
@@ -61,6 +75,7 @@ export default function RunPage() {
 
   const commit = (approach: number) => act('Could not choose that approach', () => runAction('commit', { runId: id, decision, approach }))
   const lockIn = (choice: number) => act('That choice did not go through', () => runAction('choose', { runId: id, decision, choice }))
+  const reveal = () => act('Could not show the score', () => runAction('reveal', { runId: id }))
   const rewind = async (to: number) => {
     const res = await act('Could not rewind', () => runAction<{ runId: string }>('rewind', { runId: id, decision: to }))
     if (res) navigate(`/run/${res.runId}`)
@@ -76,15 +91,12 @@ export default function RunPage() {
         ← Scenarios
       </Link>
       <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground">{snapshot.title}</h1>
-      {run.branchAt >= 0 && (
-        <p className="mt-1 text-sm text-muted-foreground">
-          Rewound to decision {run.branchAt + 1}. Your earlier choices are kept up to there.
-        </p>
-      )}
       <p className="mt-4 text-foreground/90">{snapshot.setting}</p>
+      <Frame answersId={run.answersId} slot="setting" />
 
       {run.status === 'playing' ? (
         <>
+          <EarlierFrames answersId={run.answersId} upTo={decision} />
           {outcomes.length > 0 && (
             <ol className="mt-6 space-y-4" data-testid="story-so-far">
               {outcomes.map((outcome, i) => (
@@ -100,6 +112,8 @@ export default function RunPage() {
             key={`${id}-${decision}`}
             index={decision}
             decision={snapshot.decisions[decision]}
+            answersId={run.answersId}
+            arrival={run.branchAt === decision}
             blocked={blocked}
             committed={committedApproach(run)}
             pending={pending}
@@ -107,8 +121,23 @@ export default function RunPage() {
             onLockIn={lockIn}
           />
         </>
-      ) : (
+      ) : scoreVisible(run) ? (
         <Debrief run={run} runId={id} pending={pending} onRewind={rewind} onRestart={restart} />
+      ) : (
+        <>
+          <LookBack
+            run={run}
+            runId={id}
+            parent={parent}
+            pending={pending}
+            onRewind={rewind}
+            onReveal={reveal}
+            onError={(message) => toast.error('Could not get a hint', message)}
+          />
+          <div className="mt-6">
+            <BackLink />
+          </div>
+        </>
       )}
     </div>
   )
@@ -119,10 +148,13 @@ export default function RunPage() {
  * the other approaches' ways are never shown), then a way inside it, then
  * Lock in. `committed` is the approach stored on the run, -1 before one is
  * chosen. `blocked` is the choice this rewound run may not repeat; -1 when
- * none.
+ * none. `arrival` is true at a rewound run's branch decision, where the
+ * later decisions are kept from the earlier run.
  */
 function DecisionCard({
   index,
+  answersId,
+  arrival,
   decision,
   blocked,
   committed,
@@ -131,6 +163,8 @@ function DecisionCard({
   onLockIn,
 }: {
   index: number
+  answersId: string
+  arrival: boolean
   decision: PublicDecision
   blocked: number
   committed: number
@@ -149,6 +183,12 @@ function DecisionCard({
         Decision {index + 1} of {DECISIONS}
       </p>
       <h2 className="mt-1 text-lg font-semibold text-foreground">{decision.prompt}</h2>
+      <Frame answersId={answersId} slot={index} />
+      {arrival && (
+        <p className="mt-3 rounded-md border border-primary/40 bg-accent/30 p-3 text-sm text-foreground" data-testid="arrival">
+          Change your choice here. Everything after it stays as you played it last time and plays out again from your new choice.
+        </p>
+      )}
 
       {approach === null ? (
         <>
@@ -223,12 +263,9 @@ function Debrief({
     }
   }, [runId])
 
-  // This player's finished runs on the same answers: first try and best so far.
-  const { records: mine } = useQuery<RunRow>('runs', { where: { answersId: run.answersId, status: 'done' }, limit: 200 })
-  const history = useMemo(() => {
-    const sorted = [...mine].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    return sorted.length ? { first: sorted[0].data.score, best: Math.max(...sorted.map((r) => r.data.score)) } : null
-  }, [mine])
+  // This player's finished runs of the same scenario and answers version: first try and best so far.
+  const { records: mine } = useQuery<RunRow>('runs', { where: { scenarioId: run.scenarioId, status: 'done' }, limit: 200 })
+  const history = useMemo(() => runHistory(mine, run.answersId), [mine, run.answersId])
 
   const lost = run.steps.reduce((sum, s) => sum + s.points, 0)
   return (
@@ -274,6 +311,8 @@ function Debrief({
           </Link>
         )}
       </div>
+
+      <Tunnel run={run} />
 
       <h2 className="mt-8 text-lg font-semibold text-foreground">Every point you lost</h2>
       <p className="text-sm text-muted-foreground">
