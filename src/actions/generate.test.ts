@@ -4,7 +4,7 @@ import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { checkScenario, LIMITS, longestBestCount, MAX_LONGEST_BEST, repairDraft } from '../features/play/engine'
 import { fixture, MIX } from '../features/play/fixture'
-import type { ScenarioAnswers, ScenarioDraft, ScenarioRow } from '../features/play/types'
+import { WRITING_ENABLED, type ScenarioAnswers, type ScenarioDraft, type ScenarioRow } from '../features/play/types'
 import { fakeTools } from './fake-tools'
 import {
   applyFixes,
@@ -19,6 +19,7 @@ import {
   fixRequest,
   fitHiddenTexts,
   FLAG_ID,
+  generateActions,
   type Generated,
   isCueProblem,
   isFixableProblem,
@@ -198,6 +199,36 @@ describe('makeScenario', () => {
     }
     expect(writer).not.toHaveBeenCalled()
     expect(rows('generations')).toEqual([])
+  })
+
+  it('refuses every call while writing is off, before reserving a call or reaching the writer', async () => {
+    const { writer } = scripted(answer())
+    const store: Store = new Map()
+    const off = makeGenerateActions(writer, false)
+    const res = (await off.makeScenario({
+      userId: 'user_a',
+      params: { situation: SITUATION },
+      tools: fakeTools('user_a', store).tools,
+      env,
+      callerJwt: 'jwt',
+    })) as ActionResult<{ scenarioId: string }>
+    expect(res).toEqual({ success: false, error: 'Writing your own scenario is turned off. Play one of the starters instead.' })
+    expect(writer).not.toHaveBeenCalled()
+    expect(store.size).toBe(0)
+  })
+
+  it('is turned off in the actions the app exposes', async () => {
+    expect(WRITING_ENABLED).toBe(false)
+    const store: Store = new Map()
+    const res = (await generateActions.makeScenario({
+      userId: 'user_a',
+      params: { situation: SITUATION },
+      tools: fakeTools('user_a', store).tools,
+      env,
+      callerJwt: 'jwt',
+    })) as ActionResult<{ scenarioId: string }>
+    expect(res.success).toBe(false)
+    expect(store.size).toBe(0)
   })
 
   it('saves a private scenario for the author, answers under the same id, and marks the call ok', async () => {

@@ -8,6 +8,10 @@
  * scenario the app owner took down cannot be published again. The app owner
  * also sees "Unpublish" on other players' scenarios (the owner-only
  * `unpublish` action).
+ *
+ * While WRITING_ENABLED is false, the page hides "Write your own", other
+ * players' scenarios and the Publish button; a player's own earlier
+ * scenarios stay under "Yours", and a public one can still be made private.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -15,7 +19,7 @@ import { useAuth, useQuery, useUser } from 'deepspace'
 import { Badge, Button, ConfirmModal, EmptyState, useToast } from '@/components/ui'
 import { ENDING_BADGE, ENDING_LABEL } from '../../../features/play/labels'
 import { runAction } from '../../../features/play/runAction'
-import { CHOICES, DECISIONS, FORMAT, type RunRow, type ScenarioRow, type Visibility } from '../../../features/play/types'
+import { CHOICES, DECISIONS, FORMAT, WRITING_ENABLED, type RunRow, type ScenarioRow, type Visibility } from '../../../features/play/types'
 import { WriteYourOwn } from '../../../features/play/WriteYourOwn'
 
 export default function Home() {
@@ -104,7 +108,10 @@ export default function Home() {
             Taken down
           </Badge>
         )}
-        {!s.data.starter && s.data.authorId === userId && !(s.data.takenDown && s.data.visibility !== 'public') && (
+        {!s.data.starter &&
+          s.data.authorId === userId &&
+          !(s.data.takenDown && s.data.visibility !== 'public') &&
+          (WRITING_ENABLED || s.data.visibility === 'public') && (
           <Button
             size="sm"
             variant="outline"
@@ -141,7 +148,7 @@ export default function Home() {
         </p>
       </header>
 
-      <WriteYourOwn />
+      {WRITING_ENABLED && <WriteYourOwn />}
 
       {runs.length > 0 && (
         <section className="mb-10">
@@ -179,7 +186,7 @@ export default function Home() {
       ) : (
         <>
           <Section title="Starters" items={groups.starters} render={card} />
-          <Section title="Shared by other players" items={groups.shared} render={card} />
+          {WRITING_ENABLED && <Section title="Shared by other players" items={groups.shared} render={card} />}
           <Section title="Yours" items={groups.mine} render={card} />
         </>
       )}

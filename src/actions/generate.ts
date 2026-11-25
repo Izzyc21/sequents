@@ -19,6 +19,9 @@
  * Every call to the model is reserved in `generations` before it is made (see
  * claimCall), and the reservations cap calls per user and for the whole app
  * each day.
+ *
+ * Turned off in this version (WRITING_ENABLED in features/play/types): the
+ * exported action refuses every call.
  */
 import { generateText, NoObjectGeneratedError, NoOutputGeneratedError, Output } from 'ai'
 import type { ActionHandler, ActionTools } from 'deepspace/worker'
@@ -50,7 +53,7 @@ import {
   WRONG_CUE_PATTERN,
   WRONG_CUE_WORDS,
 } from '../features/play/engine'
-import { DECISIONS, FORMAT, type DraftWay, type Grade, type ScenarioDraft, type ScenarioRow } from '../features/play/types'
+import { DECISIONS, FORMAT, WRITING_ENABLED, type DraftWay, type Grade, type ScenarioDraft, type ScenarioRow } from '../features/play/types'
 import { fail, ok, saveFailed, str } from './shared'
 
 export const MODEL = 'claude-haiku-5-5'
@@ -981,11 +984,17 @@ const WRITER_FAILED = 'The writer did not answer in time. Try again.'
 const NOT_PLAYABLE = 'The writer could not make a playable scenario from that. Try describing it differently.'
 const REFUSED =
   'sequents only writes everyday situations. For anything involving harm, abuse or a medical emergency, please reach out to someone who can help directly.'
+const WRITING_OFF = 'Writing your own scenario is turned off. Play one of the starters instead.'
 
-export function makeGenerateActions(writer: ScenarioWriter): Record<string, ActionHandler<Env>> {
+/**
+ * `enabled` false makes makeScenario refuse every call before it reserves a
+ * call or reaches the writer (see WRITING_ENABLED in features/play/types).
+ */
+export function makeGenerateActions(writer: ScenarioWriter, enabled = true): Record<string, ActionHandler<Env>> {
   return {
     /** Writes a private scenario for the caller from `situation`. Returns {scenarioId}. */
     makeScenario: async ({ userId, params, tools, env }) => {
+      if (!enabled) return fail(WRITING_OFF)
       // The platform already refuses signed-out callers; this keeps the
       // per-user cap meaningful if that ever changes.
       if (!userId || isAnonymousUserId(userId)) return fail('Sign in to write a scenario.')
@@ -1117,4 +1126,4 @@ export function makeGenerateActions(writer: ScenarioWriter): Record<string, Acti
   }
 }
 
-export const generateActions = makeGenerateActions(claudeWriter)
+export const generateActions = makeGenerateActions(claudeWriter, WRITING_ENABLED)

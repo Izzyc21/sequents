@@ -1,15 +1,30 @@
 /**
  * Write your own and publishing.
  *
- * The first test costs nothing. The second makes one real call to the AI
- * model (billed to the app owner), so it runs only when RUN_AI_TESTS=1.
+ * Writing is turned off in this version (WRITING_ENABLED), so the first test
+ * checks the home page shows none of it and the other two are skipped. When
+ * it is on, the second test costs nothing and the third makes one real call
+ * to the AI model (billed to the app owner), so it runs only when
+ * RUN_AI_TESTS=1.
  */
 import { test, expect } from 'deepspace/testing'
-import { DECISIONS } from '../src/features/play/types'
+import { DECISIONS, WRITING_ENABLED } from '../src/features/play/types'
 
 test.setTimeout(180_000)
 
+test('with writing off, home shows the starters and no write box, shared list or Publish button', async ({ users }) => {
+  test.skip(WRITING_ENABLED, 'writing is on')
+  const [alice] = await users(['Alice'])
+  await alice.page.goto('/home')
+  await expect(alice.page.getByRole('heading', { name: 'Starters' })).toBeVisible({ timeout: 20_000 })
+  await expect(alice.page.getByTestId('scenario-card').first()).toBeVisible()
+  await expect(alice.page.getByTestId('write-your-own')).toHaveCount(0)
+  await expect(alice.page.getByRole('heading', { name: 'Shared by other players' })).toHaveCount(0)
+  await expect(alice.page.getByRole('button', { name: 'Publish' })).toHaveCount(0)
+})
+
 test('the write box needs 10 to 400 characters', async ({ users }) => {
+  test.skip(!WRITING_ENABLED, 'writing is off')
   const [alice] = await users(['Alice'])
   await alice.page.goto('/home')
   const box = alice.page.getByTestId('write-your-own')
@@ -25,7 +40,7 @@ test('the write box needs 10 to 400 characters', async ({ users }) => {
 })
 
 test('write a scenario, play it, publish it to another player, then make it private', async ({ users }) => {
-  test.skip(process.env.RUN_AI_TESTS !== '1', 'makes a real AI call; set RUN_AI_TESTS=1')
+  test.skip(!WRITING_ENABLED || process.env.RUN_AI_TESTS !== '1', 'needs writing on, and makes a real AI call; set RUN_AI_TESTS=1')
   const [alice, bob] = await users(['Alice', 'Bob'])
 
   const frames: string[] = []

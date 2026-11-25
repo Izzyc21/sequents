@@ -28,6 +28,19 @@ export const CHOICES = APPROACHES * WAYS
 /** Rows written in this shape carry `format: 2`; rows from the first version have none. */
 export const FORMAT = 2
 
+/**
+ * Whether players can have the AI write a scenario ("Write your own").
+ *
+ * Off. Measured against the hand-written starters, AI-written scenarios were
+ * much easier (the best option gave itself away) and often graded wrong (a
+ * later decision assumed one earlier choice; a flag was raised by an option
+ * that did not do what it named). While this is false, the makeScenario
+ * action refuses before it reserves or makes any AI call, and the home page
+ * shows neither the "Write your own" panel nor other players' scenarios.
+ * The writer and its checks stay in the code, tested, for a later version.
+ */
+export const WRITING_ENABLED = false
+
 export type Grade = 'best' | 'slip' | 'mistake' | 'blunder'
 export type Ending = 'good' | 'ok' | 'bad'
 
