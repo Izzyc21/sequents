@@ -17,7 +17,8 @@ const appDir = fileURLToPath(new URL('.', import.meta.url))
 //
 // Unit tests live next to their source. The Node-only prerender test stays at
 // the root so it does not enter the browser/Worker TypeScript project in src/;
-// so does the bundle scan, which reads the built client.
+// so do the bundle scan, which reads the built client, and the frame hygiene
+// scan, which reads the frame source files.
 export default defineConfig({
   // Same app id the bundle is built with, from the same wrangler config —
   // so a unit test importing src/constants.ts sees what the browser will.
@@ -29,7 +30,7 @@ export default defineConfig({
   },
   test: {
     // Unit tests only; tests/*.spec.ts are Playwright suites run separately.
-    include: ['prerender.test.ts', 'bundle.test.ts', 'src/**/*.{test,spec}.{ts,tsx}'],
+    include: ['prerender.test.ts', 'bundle.test.ts', 'frameHygiene.test.ts', 'src/**/*.{test,spec}.{ts,tsx}'],
     environment: 'node',
   },
 })
