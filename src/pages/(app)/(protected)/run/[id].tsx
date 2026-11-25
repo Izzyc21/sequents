@@ -327,8 +327,8 @@ function Debrief({
           {history && (
             <li data-testid="history">
               {windowFull
-                ? `Your first try: not shown (you have more than ${HISTORY_WINDOW} finished runs here). Best in your last ${HISTORY_WINDOW}: ${history.best}.`
-                : `Your first try: ${history.first}. Best so far: ${history.best}.`}
+                ? `Your first run of this scenario: not shown (you have more than ${HISTORY_WINDOW} finished runs here). Best in your last ${HISTORY_WINDOW}: ${history.best}.`
+                : `Your first run of this scenario: ${history.first}. Best so far: ${history.best}.`}
             </li>
           )}
           <li>This beats {run.beats}% of all possible paths.</li>

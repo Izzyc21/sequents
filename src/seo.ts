@@ -26,7 +26,7 @@ declare const __DEEPSPACE_SITE_ORIGIN__: string | undefined
 
 export const seo = {
   title: `${APP_NAME} | Rehearse a hard moment, then replay it`,
-  description: 'Play a four-decision scenario, look back at how it went, then rewind any decision to find a better line.',
+  description: 'Play a four-decision scenario, see how it ended, then change any one decision, once, before the debrief shows where the points went.',
   /** Public origin for canonical URLs, og:url, and the sitemap — no trailing
    *  slash. Replace with the custom domain once one is attached, e.g.
    *  'https://www.example.com'. */

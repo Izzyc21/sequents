@@ -14,8 +14,8 @@ import { seo } from '../seo'
 
 const STEPS = [
   { title: 'Play', text: 'Pick a scenario: asking for a raise, a "password expires today" email at work, a rent renewal. Four decisions: at each, choose what you do, then exactly how.' },
-  { title: 'Look back', text: 'When it ends you see what happened at each decision and how it went overall, not a score. Then pick the decision you would change.' },
-  { title: 'Rewind and continue', text: 'Change that one decision; your later choices stay and play out again from there. Reasons unlock once you have tried two choices at a decision.' },
+  { title: 'Look back', text: 'When it ends you see what happened at each decision, how it ended and your total, but not where the points went.' },
+  { title: 'One last chance', text: 'Change any one decision, once; your later choices stay and play out again from there. Then the debrief shows where the points went on both tries.' },
 ]
 
 export default function Landing() {

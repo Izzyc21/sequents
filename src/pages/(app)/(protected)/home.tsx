@@ -147,8 +147,8 @@ export default function Home() {
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Rehearse a hard moment</h1>
         <p className="mt-1 max-w-2xl text-muted-foreground">
           Four decisions. At each one, pick what you do, then exactly how. Every choice is something a sensible person
-          might do; only one is best. When it ends you look back at what happened, without a score, and you can
-          rewind any decision to try a different line.
+          might do; only one is best. When it ends you see your total and how it ended, but not where the points
+          went, and you get one last chance: change any one decision, once.
         </p>
       </header>
 
