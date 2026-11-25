@@ -6,6 +6,7 @@ import { checkScenario, LIMITS, longestBestCount, MAX_LONGEST_BEST, repairDraft 
 import { fixture, MIX } from '../features/play/fixture'
 import { WRITING_ENABLED, type ScenarioAnswers, type ScenarioDraft, type ScenarioRow } from '../features/play/types'
 import { fakeTools } from './fake-tools'
+import { actions as registered } from './index'
 import {
   applyFixes,
   applyWhys,
@@ -173,7 +174,7 @@ type Store = ReturnType<typeof fakeTools>['store']
 
 function setup(writer: ScenarioWriter, toolsFor?: (userId: string, store: Store) => ActionTools) {
   const store: Store = new Map()
-  const actions = makeGenerateActions(writer)
+  const actions = makeGenerateActions(writer, true)
   const tools = (userId: string) => (toolsFor ? toolsFor(userId, store) : fakeTools(userId, store).tools)
   const call = async (userId: string, situation: unknown = SITUATION) =>
     (await actions.makeScenario({ userId, params: { situation }, tools: tools(userId), env, callerJwt: 'jwt' })) as ActionResult<{
@@ -219,15 +220,17 @@ describe('makeScenario', () => {
 
   it('is turned off in the actions the app exposes', async () => {
     expect(WRITING_ENABLED).toBe(false)
+    // The map the worker registers (actions/index.ts), not only this module's export.
+    expect(registered.makeScenario).toBe(generateActions.makeScenario)
     const store: Store = new Map()
-    const res = (await generateActions.makeScenario({
+    const res = (await registered.makeScenario({
       userId: 'user_a',
       params: { situation: SITUATION },
       tools: fakeTools('user_a', store).tools,
       env,
       callerJwt: 'jwt',
     })) as ActionResult<{ scenarioId: string }>
-    expect(res.success).toBe(false)
+    expect(res).toEqual({ success: false, error: 'Writing your own scenario is turned off. Play one of the starters instead.' })
     expect(store.size).toBe(0)
   })
 

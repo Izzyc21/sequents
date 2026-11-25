@@ -34,9 +34,12 @@ export const FORMAT = 2
  * Off. Measured against the hand-written starters, AI-written scenarios were
  * much easier (the best option gave itself away) and often graded wrong (a
  * later decision assumed one earlier choice; a flag was raised by an option
- * that did not do what it named). While this is false, the makeScenario
- * action refuses before it reserves or makes any AI call, and the home page
- * shows neither the "Write your own" panel nor other players' scenarios.
+ * that did not do what it named). While this is false, on the server:
+ * makeScenario refuses before it reserves or makes any AI call,
+ * setVisibility refuses to publish, and startRun and rewind refuse other
+ * players' scenarios (canPlay). The home page hides the "Write your own"
+ * panel and the Publish button, and lists other players' scenarios only for
+ * the app owner, without Start, so a published one can still be taken down.
  * The writer and its checks stay in the code, tested, for a later version.
  */
 export const WRITING_ENABLED = false

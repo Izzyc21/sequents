@@ -6,6 +6,7 @@ import { fromChoice } from '../features/play/engine'
 import { choicesOf, findChoice, fixture } from '../features/play/fixture'
 import { FORMAT, type RunRow, type ScenarioAnswers } from '../features/play/types'
 import { fakeTools } from './fake-tools'
+import { canPlay } from './shared'
 import { type Explained, playActions, resetSeedCache, RUNS_PER_DAY, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
 
 const OWNER = 'user_owner'
@@ -118,6 +119,13 @@ describe('seedStarters', () => {
 
     await play(call, runId, choicesOf(keys, 'best'))
     expect(runOf(store, runId)).toMatchObject({ answersId, endingText: 'Good.', score: 100 })
+
+    // A rewind of that run also stays on its own text and answers.
+    const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 3 })).data!.runId
+    expect(runOf(store, child)).toMatchObject({ answersId, snapshot: runOf(store, runId).snapshot })
+    // A rewind needs a different choice: a slip at the last decision still ends good (95).
+    await play(call, child, [choicesOf(keys, 'slip')[3]], 3)
+    expect(runOf(store, child)).toMatchObject({ endingText: 'Good.', score: 95 })
   })
 })
 
@@ -415,6 +423,21 @@ describe('canPlay', () => {
     const { store, call } = await seeded()
     Object.assign(store.get('scenarios')!.get(SCENARIO)!.data, { visibility: 'public', authorId: 'user_a', takenDown: true })
     expect((await call('startRun', 'user_b', { scenarioId: SCENARIO })).success).toBe(false)
+    await start(call)
+  })
+
+  it("while writing is off, refuses another player's scenario even when public, and keeps starters and the author's own", async () => {
+    const shared = { visibility: 'public' as const, authorId: 'user_a', takenDown: false, starter: false }
+    const starter = { visibility: 'public' as const, authorId: '', takenDown: false, starter: true }
+    expect(canPlay(shared, 'user_b', true)).toBe(true)
+    expect(canPlay(shared, 'user_b', false)).toBe(false)
+    expect(canPlay(shared, 'user_a', false)).toBe(true)
+    expect(canPlay(starter, 'user_b', false)).toBe(true)
+
+    // The actions the app runs use the switch as it is (off).
+    const { store, call } = await seeded()
+    Object.assign(store.get('scenarios')!.get(SCENARIO)!.data, { starter: false, authorId: 'user_a', visibility: 'public' })
+    expect((await call('startRun', 'user_b', { scenarioId: SCENARIO })).error).toBe('That scenario is not available.')
     await start(call)
   })
 

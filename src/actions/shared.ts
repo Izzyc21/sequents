@@ -7,7 +7,7 @@
  * checks ownership or canPlay itself before acting on what it loaded.
  */
 import type { ActionResult, ActionTools } from 'deepspace/worker'
-import { FORMAT, type RunRow, type ScenarioAnswers, type ScenarioRow } from '../features/play/types'
+import { FORMAT, WRITING_ENABLED, type RunRow, type ScenarioAnswers, type ScenarioRow } from '../features/play/types'
 
 export function ok<T>(data: T): ActionResult<T> {
   return { success: true, data }
@@ -54,11 +54,21 @@ export const loadAnswers = (tools: ActionTools, answersId: string) =>
 
 export const loadRun = (tools: ActionTools, id: string) => load<RunRow & Record<string, unknown>>(tools, 'runs', id)
 
-/** Anyone signed in may play a public scenario; a private one only its author. */
-export function canPlay(scenario: Pick<ScenarioRow, 'visibility' | 'authorId' | 'takenDown'>, userId: string): boolean {
+/**
+ * Who may start a run on a scenario: its author always, anyone signed in on a
+ * public one. While `writing` is off (WRITING_ENABLED), other players'
+ * scenarios are not playable even when public, so scenarios the AI wrote
+ * before it was turned off reach only their authors; starters stay public.
+ */
+export function canPlay(
+  scenario: Pick<ScenarioRow, 'visibility' | 'authorId' | 'takenDown' | 'starter'>,
+  userId: string,
+  writing: boolean = WRITING_ENABLED,
+): boolean {
   // A taken-down scenario stays playable only by its author, even if a late
   // write left it public (see setVisibility).
   if (scenario.authorId !== '' && scenario.authorId === userId) return true
+  if (!writing && !scenario.starter) return false
   return scenario.visibility === 'public' && !scenario.takenDown
 }
 

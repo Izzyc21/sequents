@@ -989,8 +989,9 @@ const WRITING_OFF = 'Writing your own scenario is turned off. Play one of the st
 /**
  * `enabled` false makes makeScenario refuse every call before it reserves a
  * call or reaches the writer (see WRITING_ENABLED in features/play/types).
+ * It has no default, so every place that builds the actions has to choose.
  */
-export function makeGenerateActions(writer: ScenarioWriter, enabled = true): Record<string, ActionHandler<Env>> {
+export function makeGenerateActions(writer: ScenarioWriter, enabled: boolean): Record<string, ActionHandler<Env>> {
   return {
     /** Writes a private scenario for the caller from `situation`. Returns {scenarioId}. */
     makeScenario: async ({ userId, params, tools, env }) => {

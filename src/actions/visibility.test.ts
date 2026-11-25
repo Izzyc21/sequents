@@ -2,19 +2,23 @@ import { describe, expect, it } from 'vitest'
 import type { ActionResult } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { fakeTools } from './fake-tools'
-import { TAKEN_DOWN, visibilityActions } from './visibility'
+import { WRITING_ENABLED } from '../features/play/types'
+import { actions as registered } from './index'
+import { makeVisibilityActions, PUBLISHING_OFF, TAKEN_DOWN, visibilityActions } from './visibility'
 
 const OWNER = 'user_owner'
 const AUTHOR = 'user_author'
 const env = { OWNER_USER_ID: OWNER } as Env
 
-function setup() {
+/** `writing` picks the switch the actions are built with; most tests cover the feature with writing on. */
+function setup(writing = true) {
+  const actions = makeVisibilityActions(writing)
   const store: ReturnType<typeof fakeTools>['store'] = new Map()
   const seed = async (id: string, data: Record<string, unknown>) => {
     await fakeTools(AUTHOR, store).tools.create('scenarios', { authorId: AUTHOR, ...data }, id)
   }
   const call = async (name: 'unpublish' | 'setVisibility', userId: string, params: Record<string, unknown>, callEnv: Env = env) =>
-    (await visibilityActions[name]({
+    (await actions[name]({
       userId,
       params,
       tools: fakeTools(userId, store).tools,
@@ -126,7 +130,7 @@ describe('setVisibility', () => {
       }
       return realUpdate(...args)
     }
-    const res = await visibilityActions.setVisibility({
+    const res = await makeVisibilityActions(true).setVisibility({
       userId: AUTHOR,
       params: { scenarioId: 'gen_1', visibility: 'public' },
       tools: authorTools,
@@ -145,5 +149,36 @@ describe('setVisibility', () => {
       data: { scenarioId: 'gen_1', visibility: 'public' },
     })
     expect(visibility('gen_1')).toBe('public')
+  })
+})
+
+describe('while writing is off', () => {
+  it('refuses to publish, but still lets the author make a scenario private and the owner take one down', async () => {
+    const { seed, setVisibility, unpublish, visibility, data } = setup(false)
+    await seed('gen_1', { visibility: 'private', starter: false })
+    expect(await setVisibility(AUTHOR, 'gen_1', 'public')).toEqual({ success: false, error: PUBLISHING_OFF })
+    expect(visibility('gen_1')).toBe('private')
+    await seed('gen_2', { visibility: 'public', starter: false })
+    expect((await setVisibility(AUTHOR, 'gen_2', 'private')).success).toBe(true)
+    expect(visibility('gen_2')).toBe('private')
+    await seed('gen_3', { visibility: 'public', starter: false })
+    expect((await unpublish(OWNER, 'gen_3')).success).toBe(true)
+    expect(data('gen_3')).toMatchObject({ visibility: 'private', takenDown: true })
+  })
+
+  it('is off in the actions the app exposes', async () => {
+    expect(WRITING_ENABLED).toBe(false)
+    expect(registered.setVisibility).toBe(visibilityActions.setVisibility)
+    const store: ReturnType<typeof fakeTools>['store'] = new Map()
+    await fakeTools(AUTHOR, store).tools.create('scenarios', { authorId: AUTHOR, visibility: 'private', starter: false }, 'gen_1')
+    const res = await registered.setVisibility({
+      userId: AUTHOR,
+      params: { scenarioId: 'gen_1', visibility: 'public' },
+      tools: fakeTools(AUTHOR, store).tools,
+      env,
+      callerJwt: 'jwt',
+    })
+    expect(res).toEqual({ success: false, error: PUBLISHING_OFF })
+    expect(store.get('scenarios')?.get('gen_1')?.data.visibility).toBe('private')
   })
 })

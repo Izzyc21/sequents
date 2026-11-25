@@ -9,8 +9,10 @@
  * also sees "Unpublish" on other players' scenarios (the owner-only
  * `unpublish` action).
  *
- * While WRITING_ENABLED is false, the page hides "Write your own", other
- * players' scenarios and the Publish button; a player's own earlier
+ * While WRITING_ENABLED is false, the page hides "Write your own" and the
+ * Publish button, and shows other players' scenarios only to the app owner,
+ * without Start, so the owner can still take a published one down (the
+ * server refuses to start them; see canPlay). A player's own earlier
  * scenarios stay under "Yours", and a public one can still be made private.
  */
 import { useEffect, useMemo, useState } from 'react'
@@ -100,9 +102,11 @@ export default function Home() {
         {DECISIONS} decisions, {CHOICES} choices each. Random picking scores about {s.data.guessAverage}.
       </p>
       <div className="mt-4 flex gap-2">
-        <Button className="flex-1" size="sm" loading={starting === s.recordId} disabled={starting !== null} onClick={() => start(s.recordId)}>
-          Start
-        </Button>
+        {(WRITING_ENABLED || s.data.starter || s.data.authorId === userId) && (
+          <Button className="flex-1" size="sm" loading={starting === s.recordId} disabled={starting !== null} onClick={() => start(s.recordId)}>
+            Start
+          </Button>
+        )}
         {!s.data.starter && s.data.authorId === userId && s.data.takenDown && s.data.visibility !== 'public' && (
           <Badge variant="secondary" data-testid="taken-down">
             Taken down
@@ -186,7 +190,7 @@ export default function Home() {
       ) : (
         <>
           <Section title="Starters" items={groups.starters} render={card} />
-          {WRITING_ENABLED && <Section title="Shared by other players" items={groups.shared} render={card} />}
+          {(WRITING_ENABLED || isAdmin) && <Section title="Shared by other players" items={groups.shared} render={card} />}
           <Section title="Yours" items={groups.mine} render={card} />
         </>
       )}
