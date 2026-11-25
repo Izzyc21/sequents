@@ -60,7 +60,7 @@ const DECISIONS: Decision[] = [
             v: [
               {
                 g: 'slip',
-                o: 'By 9:26 she is blocked and the overseas session is dead; its next refresh fails. The stolen password and anything added after her approval still work, so she cannot be let back in yet.',
+                o: 'By 9:26 she is blocked and the overseas session can no longer renew its sign-in. The stolen password and anything added after her approval still work, so she cannot be let back in yet.',
                 w: 'Blocking and revoking stopped the attacker for now, but the stolen password and any added method work again the moment the block lifts. Replacing and clearing them in the same sitting makes the account safe to return.',
               },
               {
