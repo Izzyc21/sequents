@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { STARTERS } from '../seeds/starters'
-import { analyse, fromChoice, scoreRun, tunnelCounts } from '../features/play/engine'
+import { analyse, bestSingleFix, fromChoice, scoreRun, tunnelCounts } from '../features/play/engine'
 import { choicesOf, findChoice, fixture } from '../features/play/fixture'
-import { FORMAT, LAST_CHANCE_CLOSED, LAST_CHANCE_USED, NOT_REVEALED, baseAnswersId, keepsLaterChoices, runHistory, scoreVisible, type RunRow, type ScenarioAnswers } from '../features/play/types'
+import { FORMAT, LAST_CHANCE_CLOSED, LAST_CHANCE_USED, NOT_REVEALED, baseAnswersId, keepsLaterChoices, lastChanceRunId, pickLastChance, runHistory, scoreVisible, type RunRow, type ScenarioAnswers } from '../features/play/types'
 import { fakeTools } from './fake-tools'
 import { canPlay } from './shared'
 import { type Explained, playActions, resetSeedCache, RUNS_PER_DAY, SEED_VERSION, seedStarterRows, starterAnswersId } from './play'
@@ -234,6 +234,7 @@ describe('choose', () => {
       expect(res.data).toEqual({ done: d === 3 })
       expect(runOf(store, runId).outcomes[d]).toBe(`Outcome ${d}00.`)
     }
+    await reveal(call, runId)
     const run = runOf(store, runId)
     expect(run).toMatchObject({ status: 'done', score: 100, ending: 'good', endingText: 'Good.', fix: { decision: -1, gain: 0 } })
     expect(run.steps.map((s) => s.points)).toEqual([0, 0, 0, 0])
@@ -247,6 +248,7 @@ describe('choose', () => {
     const raise = findChoice(keys, 0, (w) => !!w.raises?.length)
     const hit = findChoice(keys, 2, (w) => !!w.ifRaised)
     await play(call, runId, [raise, best[1], hit, best[3]])
+    await reveal(call, runId)
     const run = runOf(store, runId)
     expect(run.steps[0]).toEqual({ grade: 'slip', points: 5, base: 'slip', causedBy: -1 })
     expect(run.steps[2]).toEqual({ grade: 'blunder', points: 20, base: 'slip', causedBy: 0 })
@@ -301,14 +303,22 @@ describe('look back', () => {
     return { store, call, keys, runId, choices }
   }
 
-  it('opens the look-back and the tunnel on the last choice, and writes every score field as before', async () => {
+  it('opens the look-back on the last choice with the total only, and writes the grades when the debrief opens', async () => {
     const { store, call, keys, runId, choices } = await finished()
     const run = runOf(store, runId)
     expect(run).toMatchObject({ status: 'done', score: 75, ending: 'ok', hidden: 1 })
     expect(run.lookback).toBeUndefined()
-    expect(run.tunnel).toEqual(tunnelCounts(keys, choices))
-    expect(run.tunnel).toHaveLength(5)
+    // Nothing on the row says where the points went yet: the player can read their own run's data.
+    expect(run).toMatchObject({ steps: [], fix: { decision: -1, gain: 0 }, beats: 0 })
+    expect(run.tunnel).toBeUndefined()
     expect(scoreVisible(run)).toBe(false)
+    await reveal(call, runId)
+    const shown = runOf(store, runId)
+    expect(shown.steps).toEqual(scoreRun(keys, choices).steps)
+    expect(shown.fix).toEqual(bestSingleFix(keys, choices))
+    expect(shown.tunnel).toEqual(tunnelCounts(keys, choices))
+    expect(shown.tunnel).toHaveLength(5)
+    expect(shown.beats).toBeGreaterThan(0)
     const playing = await start(call)
     await lockIn(call, playing, 0, 0)
     expect(runOf(store, playing).lookback).toBeUndefined()
@@ -320,6 +330,7 @@ describe('look back', () => {
     const { store, call, keys } = await seeded()
     const runId = await start(call)
     await play(call, runId, choicesOf(keys, 'best'))
+    await reveal(call, runId)
     const tunnel = runOf(store, runId).tunnel!
     expect(tunnel[0]).toBe(analyse(keys).endings.good)
     expect(tunnel[4]).toBe(1)
@@ -372,7 +383,12 @@ describe('look back', () => {
   it('refuses a reveal or a last chance when the runs cannot be read', async () => {
     const { store, runId } = await finished()
     const { tools } = fakeTools('user_a', store)
-    const broken = { ...tools, query: async () => ({ success: false as const, error: 'down' }) } as unknown as ActionTools
+    // Only the lookup of the first try's last chance fails; the daily run count has its own test.
+    const query: ActionTools['query'] = async (collection, options) =>
+      (options?.where as Record<string, unknown> | undefined)?.parentRunId !== undefined
+        ? { success: false as const, error: 'down' }
+        : tools.query(collection, options)
+    const broken = { ...tools, query } as unknown as ActionTools
     for (const [name, params] of [['reveal', { runId }], ['rewind', { runId, decision: 1 }]] as const) {
       const res = (await playActions[name]({ userId: 'user_a', params, tools: broken, env, callerJwt: 'jwt' })) as ActionResult
       expect(res.error).toBe('Could not load your runs. Try again.')
@@ -407,8 +423,105 @@ describe('look back', () => {
   it('lets the last chance start from a first try whose debrief is hidden, and keeps it hidden while it is played', async () => {
     const { store, call, runId } = await finished()
     const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 0 })).data!.runId
+    expect(child).toBe(lastChanceRunId(runId))
     expect(runOf(store, child)).toMatchObject({ parentRunId: runId, status: 'playing' })
     expect(runOf(store, runId).hidden).toBe(1)
+  })
+})
+
+describe('last chance and reveal sent at the same time', () => {
+  const act = (name: string, params: Record<string, unknown>, tools: ActionTools) =>
+    playActions[name]({ userId: 'user_a', params, tools, env, callerJwt: 'jwt' }) as Promise<ActionResult<{ runId: string }>>
+  const plain = (store: Store) => fakeTools('user_a', store).tools as ActionTools
+  /** Lets every pending in-memory call run. */
+  const settle = () => new Promise((r) => setTimeout(r, 0))
+
+  /** Tools whose first `method` call waits until the returned release() is called: the other request runs in between. */
+  function held(store: Store, method: 'create' | 'update') {
+    const { tools } = fakeTools('user_a', store)
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    let waited = false
+    const original = tools[method] as (...a: unknown[]) => Promise<unknown>
+    const wrapped = async (...a: unknown[]) => {
+      if (!waited) {
+        waited = true
+        await gate
+      }
+      return original(...a)
+    }
+    return { tools: { ...tools, [method]: wrapped } as unknown as ActionTools, release, reached: () => waited }
+  }
+
+  async function finishedRun() {
+    const { store, call, keys } = await seeded()
+    const runId = await start(call)
+    await play(call, runId, choicesOf(keys, 'blunder'))
+    return { store, runId }
+  }
+
+  const lastChances = (store: Store, runId: string) =>
+    [...store.get('runs')!.values()].filter((r) => (r.data as unknown as RunRow).parentRunId === runId)
+
+  it('a reveal that lands after the last chance passed its checks wins: the new run is withdrawn', async () => {
+    const { store, runId } = await finishedRun()
+    const rewind = held(store, 'create')
+    const rewinding = act('rewind', { runId, decision: 1 }, rewind.tools)
+    await settle()
+    expect(rewind.reached()).toBe(true)
+    expect((await act('reveal', { runId }, plain(store))).success).toBe(true)
+    rewind.release()
+    expect((await rewinding).error).toBe(LAST_CHANCE_CLOSED)
+    expect(runOf(store, runId).hidden).toBe(0)
+    expect(lastChances(store, runId)).toHaveLength(0)
+  })
+
+  it('a last chance created after the reveal passed its checks is withdrawn by the reveal', async () => {
+    const { store, runId } = await finishedRun()
+    const revealHeld = held(store, 'update')
+    const revealing = act('reveal', { runId }, revealHeld.tools)
+    await settle()
+    expect(revealHeld.reached()).toBe(true)
+    expect((await act('rewind', { runId, decision: 1 }, plain(store))).success).toBe(true)
+    revealHeld.release()
+    expect((await revealing).success).toBe(true)
+    expect(runOf(store, runId).hidden).toBe(0)
+    expect(lastChances(store, runId)).toHaveLength(0)
+  })
+
+  it('two last chances sent at once write one run', async () => {
+    const { store, runId } = await finishedRun()
+    const a = held(store, 'create')
+    const b = held(store, 'create')
+    const first = act('rewind', { runId, decision: 1 }, a.tools)
+    const second = act('rewind', { runId, decision: 2 }, b.tools)
+    await settle()
+    expect(a.reached() && b.reached()).toBe(true)
+    a.release()
+    b.release()
+    const results = await Promise.all([first, second])
+    for (const res of results) expect(res.data).toEqual({ runId: lastChanceRunId(runId) })
+    expect(lastChances(store, runId)).toHaveLength(1)
+    expect(runOf(store, runId).hidden).toBe(1)
+  })
+
+  it('with several last chances from an earlier version, picks the unfinished one and refuses the reveal until it ends', async () => {
+    const { store, runId } = await finishedRun()
+    const { tools } = fakeTools('user_a', store)
+    const base = { ...runOf(store, runId), parentRunId: runId, branchAt: 1 }
+    await tools.create('runs', { ...base, status: 'done', hidden: 0 } as unknown as Record<string, unknown>, 'old-done')
+    await tools.create('runs', { ...base, status: 'playing', choices: base.choices.slice(0, 1) } as unknown as Record<string, unknown>, 'old-open')
+    expect(pickLastChance(lastChances(store, runId).map((r) => ({ recordId: r.recordId as string, data: r.data as unknown as RunRow })))).toEqual({ id: 'old-open', done: false })
+    expect((await act('reveal', { runId }, plain(store))).error).toBe('Finish your last chance first. When it ends you see where your points went on both tries.')
+    expect((await act('rewind', { runId, decision: 0 }, plain(store))).error).toBe(LAST_CHANCE_USED)
+    expect(runOf(store, runId).hidden).toBe(1)
+  })
+
+  it('picks the first unfinished last chance, else the oldest', () => {
+    const row = (recordId: string, status: RunRow['status']) => ({ recordId, data: { status } })
+    expect(pickLastChance([])).toBeUndefined()
+    expect(pickLastChance([row('a', 'done'), row('b', 'playing'), row('c', 'playing')])).toEqual({ id: 'b', done: false })
+    expect(pickLastChance([row('a', 'done'), row('b', 'done')])).toEqual({ id: 'a', done: true })
   })
 })
 
@@ -704,16 +817,18 @@ describe('rewind keeps the later choices', () => {
     expect(runOf(store, runId).hidden).toBe(0)
     expect(row.outcomes).toHaveLength(4)
     expect(row.steps).toHaveLength(4)
+    // The first try's grades are written now that its debrief may show.
+    expect(runOf(store, runId).steps).toHaveLength(4)
+    expect(runOf(store, runId).tunnel).toHaveLength(5)
     expect(row.choices[0]).not.toBe(raise)
   })
 
   it('replays the whole path, so an outcome that depended on the changed choice is recomputed', async () => {
     const { store, call, keys, best, hit, runId } = await flagged()
-    const parent = runOf(store, runId)
-    expect(parent.outcomes[2]).toBe('The promise comes due.')
-    expect(parent.steps[2]).toMatchObject({ grade: 'blunder', causedBy: 0 })
+    expect(runOf(store, runId).outcomes[2]).toBe('The promise comes due.')
     const child = (await call<{ runId: string }>('rewind', 'user_a', { runId, decision: 0 })).data!.runId
     await lockIn(call, child, 0, best[0])
+    expect(runOf(store, runId).steps[2]).toMatchObject({ grade: 'blunder', causedBy: 0 })
     const row = runOf(store, child)
     expect(row.outcomes[2]).toBe('Outcome 201.')
     expect(row.steps[2]).toEqual({ grade: 'slip', points: 5, base: 'slip', causedBy: -1 })

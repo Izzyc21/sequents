@@ -1,6 +1,7 @@
 /**
- * The look-back screen of a finished first try, before its debrief: the total
- * score and how it ended, what happened at each decision, the other options
+ * The look-back screen of a finished first try, before its debrief: how it
+ * ended and its total score (one quiet line, so the screen reads as part of
+ * the run rather than its result), what happened at each decision, the other options
  * at each decision, and its one last chance: change any one decision, once
  * (rewind). It shows no grade, no per-decision points and no reason, so
  * nothing says where the points went; the debrief shows that after the last
@@ -35,18 +36,17 @@ export function LookBack({
         Look back
       </h2>
       <div className="mt-3 rounded-lg border border-border bg-card p-5">
-        <p className="text-4xl font-bold tracking-tight text-foreground" data-testid="lookback-score">
-          {run.score}
-          <span className="text-lg font-medium text-muted-foreground"> / 100</span>
+        <p className="text-foreground/90">{run.endingText}</p>
+        <p className="mt-3 text-sm text-muted-foreground" data-testid="lookback-score">
+          {run.parentRunId ? 'Score' : 'First try score'}: <span className="font-semibold text-foreground">{run.score}</span> / 100
         </p>
-        <p className="mt-3 text-foreground/90">{run.endingText}</p>
       </div>
 
       {lastChance ? (
         <div className="mt-8 rounded-lg border border-primary/40 bg-accent/30 p-4" data-testid="last-chance-started">
           <p className="text-foreground">
             {lastChance.done
-              ? 'Your last chance is finished. Its result shows where your points went on both tries.'
+              ? 'Your last chance is finished.'
               : 'Your last chance is in progress. Finish it to see where your points went on both tries.'}
           </p>
           <Link
@@ -61,7 +61,8 @@ export function LookBack({
           <h3 className="mt-8 text-lg font-semibold text-foreground">One last chance</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             You can change one decision, once. Everything after it stays as you played it and plays out again from your new choice.
-            Then you see where every point went, on both tries.
+            Then you see where every point went, on both tries. Pressing Change starts it at that decision; you can leave and come
+            back to finish it.
           </p>
         </>
       )}

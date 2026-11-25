@@ -23,10 +23,12 @@ import { LookBack } from '../../../../features/play/LookBack'
 import { runAction } from '../../../../features/play/runAction'
 import { Tunnel } from '../../../../features/play/Tunnel'
 import {
+  CHILDREN_READ,
   committedApproach,
   DECISIONS,
   FORMAT,
   keepsLaterChoices,
+  pickLastChance,
   runHistory,
   scoreVisible,
   WAYS,
@@ -44,8 +46,8 @@ export default function RunPage() {
   const { records, status } = useQuery<RunRow>('runs', { where: { recordId: id } })
   const run = records[0]?.data
   const parent = useQuery<RunRow>('runs', { where: { recordId: run?.parentRunId || 'none' } }).records[0]?.data
-  const childRow = useQuery<RunRow>('runs', { where: { parentRunId: id || 'none' }, limit: 1 }).records[0]
-  const lastChance = childRow ? { id: childRow.recordId, done: childRow.data.status === 'done' } : undefined
+  const children = useQuery<RunRow>('runs', { where: { parentRunId: id || 'none' }, orderBy: 'createdAt', orderDir: 'asc', limit: CHILDREN_READ })
+  const lastChance = pickLastChance(children.records)
   const [pending, setPending] = useState(false)
 
   if (!run) {
@@ -141,7 +143,8 @@ export default function RunPage() {
         />
       ) : (
         <>
-          <LookBack run={run} lastChance={lastChance} pending={pending} onRewind={rewind} onReveal={reveal} />
+          {/* Until the last chance is loaded the page cannot tell which controls apply, so they stay disabled. */}
+          <LookBack run={run} lastChance={lastChance} pending={pending || children.status === 'loading'} onRewind={rewind} onReveal={reveal} />
           <div className="mt-6">
             <BackLink />
           </div>

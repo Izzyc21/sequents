@@ -248,6 +248,27 @@ export const LAST_CHANCE_CLOSED = 'You chose to see where your points went, so t
 /** True when the page may show this run's debrief (every lost point): finished and not hidden (a missing `hidden` counts as revealed). */
 export const scoreVisible = (run: Pick<RunRow, 'status' | 'hidden'>): boolean => run.status === 'done' && run.hidden !== 1
 
+/** Record id of the last-chance run of first try `runId`. A fixed id means two rewinds sent at once write the same row. */
+export const lastChanceRunId = (runId: string): string => `lc-${runId}`
+
+/** How many runs of one first try the server and the page read to pick its last chance. */
+export const CHILDREN_READ = 20
+
+/**
+ * The last-chance run of a first try, from the runs whose parentRunId is that
+ * first try, oldest first: the first unfinished one if any is (it is the one
+ * still to play), else the oldest. `done` is true only when none is
+ * unfinished. Runs saved by an earlier version can have several; the server
+ * and the page both pick with this, so they always agree.
+ */
+export function pickLastChance(
+  rows: { recordId: string; data: Pick<RunRow, 'status'> }[],
+): { id: string; done: boolean } | undefined {
+  const open = rows.find((r) => r.data.status !== 'done')
+  const row = open ?? rows[0]
+  return row ? { id: row.recordId, done: !open } : undefined
+}
+
 /**
  * True when locking in a new choice at a rewound run's branch decision also
  * settles every later decision with the parent's choices (see the choose

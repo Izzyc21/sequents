@@ -94,6 +94,26 @@ const leaks = (received: Received[], secrets: string[]) =>
 const dataMessages = (received: Received[]) =>
   received.filter((r) => r.from.startsWith('ws ') || r.from.startsWith('http /api/actions/'))
 
+/** The data of every copy of record `id` that arrived (a query result or a change), as JSON text. */
+function copiesOf(received: Received[], id: string): string[] {
+  const found: string[] = []
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) return v.forEach(walk)
+    if (!v || typeof v !== 'object') return
+    const o = v as Record<string, unknown>
+    if (o.recordId === id && o.data) found.push(JSON.stringify(o.data))
+    Object.values(o).forEach(walk)
+  }
+  for (const r of received) {
+    try {
+      walk(JSON.parse(r.text))
+    } catch {
+      // Not JSON: a page or a script.
+    }
+  }
+  return found
+}
+
 /**
  * At decision `decision` (1-based), commits to approach `a`, picks way `w`, locks in, and waits for what comes next:
  * the next decision, or, on a first try, the look-back screen after the last one.
@@ -172,7 +192,7 @@ test('play, look back, last chance, debrief, compare; runs stay private; hidden 
   // 1b. The look-back screen: the total score and ending, a row per decision, the one last chance, and nothing that says where the points went.
   const lookBack = alice.page.getByTestId('lookback')
   await expect(lookBack.getByRole('heading', { name: 'Look back', exact: true })).toBeVisible()
-  await expect(lookBack.getByTestId('lookback-score')).toHaveText(/^\d{1,3} \/ 100$/)
+  await expect(lookBack.getByTestId('lookback-score')).toHaveText(/^First try score: \d{1,3} \/ 100$/)
   await expect(lookBack.getByTestId('lookback-row')).toHaveCount(DECISIONS)
   await expect(lookBack.getByRole('heading', { name: 'One last chance' })).toBeVisible()
   await expect(lookBack.getByRole('button', { name: /Change this one/ })).toHaveCount(DECISIONS)
@@ -182,6 +202,12 @@ test('play, look back, last chance, debrief, compare; runs stay private; hidden 
   await expect(alice.page.getByTestId('debrief')).toHaveCount(0)
   await expect(alice.page.getByTestId('tunnel-nodes')).toHaveCount(0)
   await expect(alice.page.locator('body')).not.toContainText(/biggest single fix|Every point you lost|no points lost|Reason locked|Why:|−\d/)
+  // Nor does the first try's own data: its grades are written only when its debrief opens. (The account's
+  // earlier runs, from other sessions, may arrive with theirs; only this run's copies are searched.)
+  const firstRunId = new URL(firstRun).pathname.split('/').pop()!
+  const firstCopies = copiesOf(dataMessages(await snapshot()), firstRunId)
+  expect(firstCopies.some((t) => t.includes('"status":"done"'))).toBe(true)
+  expect(firstCopies.filter((t) => /"(grade|tunnel)"\s*:/.test(t))).toEqual([])
 
   // 2. The last chance at decision 3: the earlier choice there is blocked.
   await lookBack.getByRole('button', { name: 'Change this one (decision 3)' }).click()
@@ -236,6 +262,8 @@ test('play, look back, last chance, debrief, compare; runs stay private; hidden 
   await expect(alice.page.getByTestId('debrief').getByTestId('score')).toHaveText(/^\d{1,3} \/ 100$/, { timeout: 15_000 })
   await expect(alice.page.getByTestId('lookback')).toHaveCount(0)
   await expect(alice.page.getByRole('link', { name: /Open your last chance on this run/ })).toHaveCount(1)
+  // Its grades reached the browser only now (the search above can find them).
+  await expect.poll(async () => copiesOf(dataMessages(await snapshot()), firstRunId).some((t) => /"grade"\s*:/.test(t))).toBe(true)
   await expect(alice.page.getByRole('link', { name: /Compare with your first try/ })).toHaveCount(0)
   await expect(alice.page.getByRole('button', { name: /Change this one|Rewind|Retry/ })).toHaveCount(0)
 
