@@ -56,7 +56,7 @@ export const DEADLINE_TEXT = {
     time: '11:15 PM',
     thoughts: [
       ['Roommate', 'Just hand it in. Nobody loses marks over two citations.'],
-      ['Classmate', 'Once those two are done, check every other reference too. Graders notice.'],
+      ['Classmate', 'Read it through once before it goes in. One sloppy paragraph costs more than a citation.'],
     ] as Thought[],
   },
   d3: {
