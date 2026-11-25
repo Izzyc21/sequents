@@ -1,6 +1,7 @@
 /**
  * Playing: seed the starters, start a run, commit to an approach, lock in a
- * way, rewind, and explain a finished run.
+ * way, ask for a hint and reveal the score of a finished run, rewind, and
+ * explain a finished run.
  *
  * The browser never writes runs itself (the schema forbids it). Every move
  * comes through here so the server can check it is legal and score it
@@ -8,9 +9,36 @@
  */
 import { isAnonymousUserId, type ActionHandler, type ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
-import { analyse, beatsShare, bestSingleFix, fromChoice, isChoice, replay, scoreRun, seededRandom, shuffleDraft, splitDraft } from '../features/play/engine'
-import { APPROACHES, committedApproach, DECISIONS, FORMAT, type RunRow, type ScenarioDraft, type ScenarioRow } from '../features/play/types'
+import {
+  analyse,
+  beatsShare,
+  bestSingleFix,
+  fromChoice,
+  gainsByDecision,
+  hintFor,
+  isChoice,
+  replay,
+  scoreRun,
+  seededRandom,
+  shuffleDraft,
+  splitDraft,
+  tunnelCounts,
+} from '../features/play/engine'
+import {
+  ALREADY_REVEALED,
+  APPROACHES,
+  committedApproach,
+  DECISIONS,
+  FORMAT,
+  keepsLaterChoices,
+  NOT_REVEALED,
+  scoreVisible,
+  type RunRow,
+  type ScenarioDraft,
+  type ScenarioRow,
+} from '../features/play/types'
 import { STARTERS } from '../seeds/starters'
+import { STARTER_VARIANTS } from '../seeds/variants'
 import { canPlay, fail, int, isGraded, loadAnswers, loadRun, loadScenario, ok, saveFailed, str } from './shared'
 
 /** Most runs (first runs and rewinds together) one player may start in any 24 hours. */
@@ -41,8 +69,18 @@ const SIGN_IN = 'Sign in to play.'
 /** Bump when starter text changes; the next seed writes a new version of every starter. */
 export const SEED_VERSION = 4
 
-/** recordId of a starter's answers for one seed version. */
-export const starterAnswersId = (scenarioId: string, version: number) => `${scenarioId}@v${version}`
+/** recordId of a starter's answers for one seed version; `n` is the hidden version (0 is the main one). */
+export const starterAnswersId = (scenarioId: string, version: number, n = 0) =>
+  n === 0 ? `${scenarioId}@v${version}` : `${scenarioId}@v${version}.${n}`
+
+/** A uniform whole number in 0..count-1 from the platform's secure random source (no modulo bias). */
+function randomBelow(count: number): number {
+  const limit = Math.floor(0x100000000 / count) * count
+  const word = new Uint32Array(1)
+  do crypto.getRandomValues(word)
+  while (word[0] >= limit)
+  return word[0] % count
+}
 
 /**
  * Makes sure every starter exists at `version`. Pages call the seedStarters
@@ -52,35 +90,61 @@ export const starterAnswersId = (scenarioId: string, version: number) => `${scen
  * write gives them no rights over it.
  *
  * Each starter is shuffled with a random source seeded by its id and version,
- * so every worker writes the same order. Each version gets its own answers
- * row, written before the readable row is pointed at it: a failure in between
- * leaves the old text with the old answers, and runs already started keep
- * their own answers. Versions only move forward: a worker still running older
- * code never writes an older version over a newer one. A starter is skipped
- * only when it is at this version, points at this version's answers and those
- * answers exist; otherwise it is written again. Starters are always public.
+ * so every worker writes the same order. A starter may have extra hidden
+ * versions in `variants` (keyed by starter id): each is shuffled with the
+ * same seed as the main draft, so its readable half must come out identical
+ * to the main one (apart from the average-score figure, which the readable
+ * row sets to the mean over all versions); a starter whose versions differ is
+ * not written and the seed fails. Each version gets its own answers row,
+ * written before the readable row is pointed at them: a failure in between leaves the old text with the
+ * old answers, and runs already started keep their own answers. Versions only
+ * move forward: a worker still running older code never writes an older
+ * version over a newer one. A starter is skipped only when it is at this
+ * version, points at this version's answers, records the same number of
+ * hidden versions and every answers row exists; otherwise it is written
+ * again. Starters are always public.
  */
-export async function seedStarterRows(tools: ActionTools, version: number, starters: ScenarioDraft[]) {
+export async function seedStarterRows(
+  tools: ActionTools,
+  version: number,
+  starters: ScenarioDraft[],
+  variants: Record<string, ScenarioDraft[]> = STARTER_VARIANTS,
+) {
   let written = 0
   for (const draft of starters) {
     const id = draft.id!
     const answersId = starterAnswersId(id, version)
+    const extra = variants[id] ?? []
     const existing = await loadScenario(tools, id)
     if (existing && (existing.seedVersion ?? 0) > version) continue
-    if (existing && existing.seedVersion === version && existing.answersId === answersId && (await loadAnswers(tools, answersId))) {
-      continue
+    if (existing && existing.seedVersion === version && existing.answersId === answersId && (existing.variants ?? 0) === extra.length) {
+      let complete = true
+      for (let n = 0; n <= extra.length && complete; n++) complete = !!(await loadAnswers(tools, starterAnswersId(id, version, n)))
+      if (complete) continue
     }
-    const { scenario, answers } = splitDraft(shuffleDraft(draft, seededRandom(answersId)))
-    const a = await tools.create('scenario_answers', { scenarioId: id, ...answers }, answersId)
-    if (!a.success) return saveFailed('seedStarters', a.error)
+    // Every version is shuffled with the main version's seed, so the readable order is the same.
+    const parts = [draft, ...extra].map((d) => splitDraft(shuffleDraft(d, seededRandom(answersId))))
+    const readable = (p: (typeof parts)[number]) => JSON.stringify({ ...p.scenario, guessAverage: 0 })
+    if (parts.some((p) => readable(p) !== readable(parts[0]))) {
+      console.error(`[action] seedStarters: a hidden version of ${id} has different readable text`)
+      return fail('That scenario could not be set up.')
+    }
+    for (let n = extra.length; n >= 0; n--) {
+      const a = await tools.create('scenario_answers', { scenarioId: id, ...parts[n].answers }, starterAnswersId(id, version, n))
+      if (!a.success) return saveFailed('seedStarters', a.error)
+    }
+    // The readable row's average is the mean over every version, so it fits whichever one a run gets.
+    const guessAverage = Math.round((parts.reduce((sum, p) => sum + p.scenario.guessAverage, 0) / parts.length) * 10) / 10
     const row: ScenarioRow = {
-      ...scenario,
+      ...parts[0].scenario,
+      guessAverage,
       format: FORMAT,
       visibility: 'public',
       starter: true,
       authorId: '',
       seedVersion: version,
       answersId,
+      variants: extra.length,
     }
     const s = await tools.create('scenarios', { ...row }, id)
     if (!s.success) return saveFailed('seedStarters', s.error)
@@ -128,7 +192,11 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     return res
   },
 
-  /** Starts a first run of a scenario the caller may play. */
+  /**
+   * Starts a first run of a scenario the caller may play. A starter with
+   * hidden versions gives the run one of them at random (see seedStarterRows);
+   * the run keeps that answers id for good, rewinds included.
+   */
   startRun: async ({ userId, params, tools }) => {
     if (!userId || isAnonymousUserId(userId)) return fail(SIGN_IN)
     const scenarioId = str(params.scenarioId)
@@ -137,6 +205,10 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     // A scenario whose answers are missing could not finish; refuse it up front.
     if (!isGraded(await loadAnswers(tools, scenario.answersId))) return fail('That scenario is not available.')
     if (await overRunLimit(tools, userId)) return fail(RUN_LIMIT_MESSAGE)
+    // Each run gets one of the starter's hidden versions at random; a version whose answers are missing falls back to the main one.
+    let answersId = scenario.answersId
+    const n = randomBelow((scenario.variants ?? 0) + 1)
+    if (n > 0 && isGraded(await loadAnswers(tools, `${scenario.answersId}.${n}`))) answersId = `${scenario.answersId}.${n}`
     const { title, situation, setting, decisions, guessAverage } = scenario
     const run: RunRow = {
       format: FORMAT,
@@ -145,7 +217,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       parentRunId: '',
       branchAt: -1,
       snapshot: { title, situation, setting, decisions, guessAverage },
-      answersId: scenario.answersId,
+      answersId,
       choices: [],
       outcomes: [],
       approach: -1,
@@ -192,7 +264,8 @@ export const playActions: Record<string, ActionHandler<Env>> = {
    * approach committed to there (see commit). On a rewound run, the decision
    * it was rewound to must get a different choice than the original. The
    * last choice scores the run: grades and points per decision, the score,
-   * the biggest single fix and the share of paths it beats. A run that
+   * the biggest single fix and the share of paths it beats, and opens its
+   * look-back (score not yet revealed) with its tunnel counts. A run that
    * started may finish even if its scenario was made private since; its text
    * lives in the snapshot and its answers row never changes.
    */
@@ -209,19 +282,18 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     const committed = committedApproach(run)
     if (committed < 0) return fail('Choose an approach first.')
     if (fromChoice(choice).approach !== committed) return fail('That way belongs to a different approach than the one you chose.')
-    if (run.branchAt >= 0 && decision === run.branchAt) {
-      const parent = await loadRun(tools, run.parentRunId)
-      if (parent && parent.choices[decision] === choice) {
-        return fail('You chose that last time. Rewinding is for trying a different choice.')
-      }
+    const branching = run.branchAt >= 0 && decision === run.branchAt
+    const parent = branching ? await loadRun(tools, run.parentRunId) : null
+    if (parent && parent.choices[decision] === choice) {
+      return fail('You chose that last time. Rewinding is for trying a different choice.')
     }
     const answers = await loadAnswers(tools, run.answersId)
     if (!isGraded(answers)) return fail('This scenario is missing its answers.')
 
-    const choices = [...run.choices, choice]
+    // The new choice at the branch also settles every later decision: they keep the parent's choices.
+    const choices = keepsLaterChoices(run, parent) ? [...run.choices, choice, ...parent.choices.slice(decision + 1)] : [...run.choices, choice]
     const details = replay(answers!.wayKeys, choices)
-    const outcome = details[decision].outcome
-    const update: Partial<RunRow> = { choices, outcomes: [...run.outcomes, outcome], approach: -1, approachAt: -1 }
+    const update: Partial<RunRow> = { choices, outcomes: details.map((d) => d.outcome), approach: -1, approachAt: -1 }
     const done = choices.length === DECISIONS
     if (done) {
       const { steps, score, ending } = scoreRun(answers!.wayKeys, choices)
@@ -232,6 +304,9 @@ export const playActions: Record<string, ActionHandler<Env>> = {
       update.beats = beatsShare(analyse(answers!.wayKeys).scoreCounts, score)
       update.ending = ending
       update.endingText = answers!.endings[ending]
+      update.hidden = 1
+      update.lookback = { hintGuess: -1, hint: '' }
+      update.tunnel = tunnelCounts(answers!.wayKeys, choices)
     }
     const res = await tools.update('runs', runId, update)
     if (!res.success) return saveFailed('choose', res.error)
@@ -241,7 +316,9 @@ export const playActions: Record<string, ActionHandler<Env>> = {
 
   /**
    * Starts a new run from a finished one, keeping every choice before
-   * `decision` and letting the player choose again from there.
+   * `decision` and letting the player choose again there. Choosing a
+   * different way at `decision` finishes the new run (see choose): the
+   * decisions after it keep what the finished run had.
    */
   rewind: async ({ userId, params, tools }) => {
     if (!userId || isAnonymousUserId(userId)) return fail(SIGN_IN)
@@ -277,6 +354,52 @@ export const playActions: Record<string, ActionHandler<Env>> = {
   },
 
   /**
+   * One hint for a finished run whose score is still hidden: the player
+   * names the decision they would change (`decision` 0-3, or 4 for "none")
+   * and gets one line (hintFor). The guess and line are stored on the run,
+   * and a later call returns the stored line and writes nothing, so a run has
+   * one hint. It writes only `lookback`, never `hidden`, so a reveal sent at
+   * the same time is never undone. Two hint calls sent at the same moment can
+   * both write; the page shows the stored line, so it settles on one. A
+   * revealed run, or one with no look-back state, gets ALREADY_REVEALED.
+   */
+  hint: async ({ userId, params, tools }) => {
+    const runId = str(params.runId)
+    const decision = int(params.decision)
+    const run = await loadRun(tools, runId)
+    if (!run || run.playerId !== userId) return fail('Run not found.')
+    if (!isGraded(run)) return fail(OLD_RUN)
+    if (run.status !== 'done') return fail('Finish the run first.')
+    if (!run.lookback || scoreVisible(run)) return fail(ALREADY_REVEALED)
+    if (decision === null || decision < 0 || decision > DECISIONS) return fail('Pick a decision, or none.')
+    if (run.lookback.hintGuess >= 0) return ok({ hint: run.lookback.hint })
+    const answers = await loadAnswers(tools, run.answersId)
+    if (!isGraded(answers)) return fail('This scenario is missing its answers.')
+    const { steps, score } = scoreRun(answers!.wayKeys, run.choices)
+    const hint = hintFor(decision, score, steps, gainsByDecision(answers!.wayKeys, run.choices))
+    const res = await tools.update('runs', runId, { lookback: { hintGuess: decision, hint } })
+    if (!res.success) return saveFailed('hint', res.error)
+    return ok({ hint })
+  },
+
+  /**
+   * Lets the page show a finished run's score and debrief. It writes only
+   * `hidden`, so a hint stored at the same time stays. A run that is already
+   * revealed, or has no look-back state, is fine and nothing is written.
+   */
+  reveal: async ({ userId, params, tools }) => {
+    const runId = str(params.runId)
+    const run = await loadRun(tools, runId)
+    if (!run || run.playerId !== userId) return fail('Run not found.')
+    if (!isGraded(run)) return fail(OLD_RUN)
+    if (run.status !== 'done') return fail('Finish the run first.')
+    if (scoreVisible(run)) return ok({ revealed: true })
+    const res = await tools.update('runs', runId, { hidden: 0 })
+    if (!res.success) return saveFailed('reveal', res.error)
+    return ok({ revealed: true })
+  },
+
+  /**
    * The reasons behind a finished run, one per decision. A best way's reason
    * is always shown. Any other reason, and the label of a flag that changed
    * the step, unlocks only once the player has finished runs with at least
@@ -286,6 +409,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
    * these answers, oldest started first. Below that many finished runs every
    * one counts, so an unlocked reason stays unlocked; past it, a choice tried
    * only in later runs counts only when the run being explained holds it.
+   * A finished run whose score is not yet revealed gets NOT_REVEALED.
    */
   explain: async ({ userId, params, tools }) => {
     const runId = str(params.runId)
@@ -293,6 +417,7 @@ export const playActions: Record<string, ActionHandler<Env>> = {
     if (!run || run.playerId !== userId) return fail('Run not found.')
     if (!isGraded(run)) return fail(OLD_RUN)
     if (run.status !== 'done') return fail('Finish the run first.')
+    if (!scoreVisible(run)) return fail(NOT_REVEALED)
     const answers = await loadAnswers(tools, run.answersId)
     if (!isGraded(answers)) return fail('This scenario is missing its answers.')
     const mine = await tools.query('runs', {

@@ -36,6 +36,8 @@ export const scenariosSchema: CollectionSchema = {
     { name: 'authorId', storage: 'text', interpretation: 'plain' },
     { name: 'seedVersion', storage: 'number', interpretation: 'plain' },
     { name: 'answersId', storage: 'text', interpretation: 'plain', required: true },
+    // Starters only: the number of extra hidden versions of the answers (missing = 0).
+    { name: 'variants', storage: 'number', interpretation: 'plain' },
     // Set by the owner's unpublish action; setVisibility then refuses 'public'.
     { name: 'takenDown', storage: 'number', interpretation: { kind: 'boolean' } },
   ],

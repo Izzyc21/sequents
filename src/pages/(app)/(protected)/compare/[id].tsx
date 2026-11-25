@@ -2,12 +2,14 @@
  * /compare/:id: a rewound run next to the run it was rewound from.
  * Shows both scores, where the picks split, and what each decision cost in
  * each run. Both runs belong to the viewer (players read only their own).
+ * Both scores must be revealed first, so a comparison never shows a score
+ * the player has kept hidden.
  */
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from 'deepspace'
 import { Badge, cn } from '@/components/ui'
 import { choiceText, ENDING_BADGE, ENDING_LABEL, GRADE_BADGE, gradeLine, scoreSum } from '../../../../features/play/labels'
-import { FORMAT, type RunRow } from '../../../../features/play/types'
+import { FORMAT, scoreVisible, type RunRow } from '../../../../features/play/types'
 
 export default function ComparePage() {
   const { id = '' } = useParams()
@@ -23,6 +25,18 @@ export default function ComparePage() {
   if (mine.branchAt < 0) return <Message text="This run was not rewound from another run, so there is nothing to compare." />
   if (mine.status !== 'done' || theirs.status !== 'done') {
     return <Message text="Finish this run first, then compare." to={`/run/${id}`} label="Back to the run" />
+  }
+  if (!scoreVisible(mine)) {
+    return <Message text="Look back at this run and show its score first, then compare." to={`/run/${id}`} label="Back to the run" />
+  }
+  if (!scoreVisible(theirs)) {
+    return (
+      <Message
+        text="The score of the run you rewound is still hidden. Open it and show its score, then compare."
+        to={`/run/${mine.parentRunId}`}
+        label="Open the earlier run"
+      />
+    )
   }
 
   const split = mine.branchAt

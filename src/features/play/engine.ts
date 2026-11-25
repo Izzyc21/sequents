@@ -288,24 +288,83 @@ export function beatsShare(scoreCounts: number[], score: number): number {
 }
 
 /**
- * Tries every one-choice change to a full path (8 other choices at each of 4
- * decisions) and returns the one that gains the most. Later steps are
- * rescored, since a change can raise or avoid a flag. Ties go to the earliest
- * decision. Decision -1 when no change gains.
+ * For each decision, the most points that changing only that decision would
+ * win back: every one of the 8 other choices is tried and later steps are
+ * rescored, since a change can raise or avoid a flag. 0 when nothing helps.
  */
-export function bestSingleFix(wayKeys: WayAnswer[][][], choices: number[]): Fix {
+export function gainsByDecision(wayKeys: WayAnswer[][][], choices: number[]): number[] {
   const base = scoreOf(replay(wayKeys, choices))
-  let fix: Fix = { decision: -1, gain: 0 }
-  for (let d = 0; d < choices.length; d++) {
+  return choices.map((own, d) => {
+    let best = 0
     for (let c = 0; c < CHOICES; c++) {
-      if (c === choices[d]) continue
+      if (c === own) continue
       const changed = [...choices]
       changed[d] = c
-      const gain = scoreOf(replay(wayKeys, changed)) - base
-      if (gain > fix.gain) fix = { decision: d, gain }
+      best = Math.max(best, scoreOf(replay(wayKeys, changed)) - base)
     }
-  }
+    return best
+  })
+}
+
+/**
+ * The one changed choice that gains the most (see gainsByDecision). Ties go
+ * to the earliest decision. Decision -1 when no change gains.
+ */
+export function bestSingleFix(wayKeys: WayAnswer[][][], choices: number[]): Fix {
+  let fix: Fix = { decision: -1, gain: 0 }
+  gainsByDecision(wayKeys, choices).forEach((gain, decision) => {
+    if (gain > fix.gain) fix = { decision, gain }
+  })
   return fix
+}
+
+/**
+ * For k = 0..DECISIONS: how many paths that start with the player's first k
+ * choices end good (score at or above BANDS.good). One walk over every path:
+ * a good path counts at each k up to the length of the prefix it shares with
+ * the player's choices.
+ */
+export function tunnelCounts(wayKeys: WayAnswer[][][], choices: number[]): number[] {
+  const counts = new Array<number>(DECISIONS + 1).fill(0)
+  forEachPath((path) => {
+    if (endingFor(scoreOf(replay(wayKeys, path))) !== 'good') return
+    let shared = 0
+    while (shared < DECISIONS && path[shared] === choices[shared]) shared++
+    for (let k = 0; k <= shared; k++) counts[k]++
+  })
+  return counts
+}
+
+/** The hint for a run that no single change improves; a perfect run gets it too. */
+export const NO_SINGLE_FIX = 'No single change wins points back here.'
+
+/** The hint guess that means "I would change none of them". Guesses 0-3 are decisions. */
+export const HINT_NOWHERE = DECISIONS
+
+/**
+ * The one-line hint for the decision a player says they would change in a
+ * finished run (or HINT_NOWHERE for "none"), from the run's score, its scored
+ * steps and `gains` (gainsByDecision). The first rule that matches decides;
+ * no line names an option or a grade. "None" and any decision that cost
+ * nothing get the same line on a perfect run as on a run that no single change
+ * can improve, so a hint never confirms a perfect score.
+ */
+export function hintFor(guess: number, score: number, steps: StepResult[], gains: number[]): string {
+  const max = score === 100 ? 0 : Math.max(...gains)
+  if (max <= 0) return guess === HINT_NOWHERE || steps[guess].points === 0 ? NO_SINGLE_FIX : 'That one cost you, but changing it alone wins nothing back.'
+  if (guess === HINT_NOWHERE) return 'One change would win points back. Look again.'
+  const top = gains.flatMap((g, d) => (g === max ? [d] : []))
+  if (top.includes(guess)) {
+    return top.length === 1
+      ? 'Yes. Changing that one decision would win back more than changing any other.'
+      : 'Yes. That is one of the best places to change.'
+  }
+  const step = steps[guess]
+  if (step.causedBy >= 0 && top.includes(step.causedBy)) return 'It went wrong there, but an earlier choice set it up.'
+  // The nearest decision in the top set; an equal distance goes to the earlier one.
+  const nearest = top.reduce((a, b) => (Math.abs(b - guess) < Math.abs(a - guess) ? b : a))
+  const direction = nearest < guess ? 'Look earlier.' : 'Look later.'
+  return step.points > 0 ? `That one cost you, but it is not your biggest fix. ${direction}` : `That one cost nothing by itself. ${direction}`
 }
 
 /**

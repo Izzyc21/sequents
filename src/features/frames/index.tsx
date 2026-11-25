@@ -59,8 +59,8 @@ export function EarlierFrames({ answersId, upTo }: { answersId: string; upTo: nu
   return (
     <details className="my-3">
       <summary className="cursor-pointer text-sm">Earlier pictures</summary>
-      {specs.map((spec) => (
-        <FrameFigure key={spec.title} spec={spec} />
+      {specs.map((spec, i) => (
+        <FrameFigure key={i} spec={spec} />
       ))}
     </details>
   )

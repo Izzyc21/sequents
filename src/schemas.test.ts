@@ -60,6 +60,18 @@ describe('runs', () => {
   })
 })
 
+describe('runs columns', () => {
+  it('declare the look-back and tunnel as json, since the SDK drops undeclared columns and does not restore stored booleans', () => {
+    for (const name of ['lookback', 'tunnel']) {
+      expect(runsSchema.columns.find((col) => col.name === name)).toMatchObject({ storage: 'text', interpretation: { kind: 'json' } })
+    }
+  })
+
+  it('declare hidden as its own number column, so a reveal and a hint never write the same column', () => {
+    expect(runsSchema.columns.find((col) => col.name === 'hidden')).toMatchObject({ storage: 'number', interpretation: 'plain' })
+  })
+})
+
 describe('generations', () => {
   it('cannot be read or changed by any role', () => {
     const entry = row({ userDay: 'user_a_2026-11-24', appDay: '2026-11-24', ok: true })

@@ -9,11 +9,17 @@
  *
  * What it proves:
  *   1. A player starts a starter, makes four two-step choices (an approach,
- *      then a way inside it) and gets a score out of 100, an ending and the
- *      list of every lost point.
+ *      then a way inside it) and lands on the look-back screen: how it went in
+ *      one line, the ending, what happened at each decision, and no score. One
+ *      hint can be asked for and stays after a reload. "Show my exact score"
+ *      then opens the debrief: the score out of 100, an ending, the list of
+ *      every lost point and the tunnel strip.
  *   2. Rewinding keeps the earlier choices, blocks the same choice at the
- *      rewound decision, unlocks the reason once two choices were tried there,
- *      and the comparison shows where the runs split.
+ *      rewound decision, keeps the later choices as they were, finishes the
+ *      run as soon as the rewound decision is locked in, marks the changed and
+ *      kept decisions on the look-back screen, unlocks the reason only at a
+ *      decision where two choices were tried, and the comparison shows where
+ *      the runs split.
  *   3. The hidden half of a scenario never reaches the browser early: no
  *      "why", flag label or ending text of the scenario being played arrives
  *      before the last choice; the outcome and reason of a way nobody picked
@@ -85,7 +91,10 @@ const leaks = (received: Received[], secrets: string[]) =>
 const dataMessages = (received: Received[]) =>
   received.filter((r) => r.from.startsWith('ws ') || r.from.startsWith('http /api/actions/'))
 
-/** At decision `decision` (1-based), commits to approach `a`, picks way `w`, locks in, and waits for what comes next. */
+/**
+ * At decision `decision` (1-based), commits to approach `a`, picks way `w`, locks in, and waits for what comes next:
+ * the next decision, or the look-back screen after the last one.
+ */
 async function choose(page: Page, decision: number, a: number, w: number) {
   const box = page.getByTestId('decision')
   await expect(box.getByText(`Decision ${decision} of ${DECISIONS}`)).toBeVisible({ timeout: 15_000 })
@@ -93,17 +102,20 @@ async function choose(page: Page, decision: number, a: number, w: number) {
   await box.getByTestId('ways').getByRole('radio').nth(w).click()
   await box.getByRole('button', { name: 'Lock in' }).click()
   if (decision < DECISIONS) await expect(box.getByText(`Decision ${decision + 1} of ${DECISIONS}`)).toBeVisible({ timeout: 15_000 })
-  else await expect(page.getByTestId('debrief')).toBeVisible({ timeout: 15_000 })
+  else await expect(page.getByTestId('lookback')).toBeVisible({ timeout: 15_000 })
 }
 
 /** The browser's choices, [approach, way] per decision: the first run takes the first way of the first approach throughout. */
 const firstPicks: [number, number][] = [[0, 0], [0, 0], [0, 0], [0, 0]]
-/** The rewound run keeps decisions 1-2 and takes the second way of the first approach at 3-4. */
-const secondPicks: [number, number][] = [[0, 0], [0, 0], [0, 1], [0, 1]]
+/**
+ * The rewound run keeps decisions 1-2, takes the second way of the first approach at 3, and
+ * decision 4 stays as played the first time.
+ */
+const secondPicks: [number, number][] = [[0, 0], [0, 0], [0, 1], [0, 0]]
 
 test.setTimeout(120_000)
 
-test('play, rewind, compare; runs stay private; hidden text stays on the server', async ({ users }) => {
+test('play, look back, reveal, rewind, compare; runs stay private; hidden text stays on the server', async ({ users }) => {
   const [alice, bob] = await users(['Alice', 'Bob'])
   expect(alice.userId, 'the test account registry should know Alice\'s user id').toBeTruthy()
   ownPlayerId = alice.userId!
@@ -154,10 +166,51 @@ test('play, rewind, compare; runs stay private; hidden text stays on the server'
   expect(leaks(beforeLast, [...pickedWhys, ...hiddenEndings(starter)])).toEqual([])
   await choose(alice.page, DECISIONS, ...firstPicks[DECISIONS - 1])
 
+  // 1b. The look-back screen: the band line and ending, a row per decision, and no score anywhere.
+  const lookBack = alice.page.getByTestId('lookback')
+  await expect(lookBack.getByRole('heading', { name: 'Look back', exact: true })).toBeVisible()
+  await expect(lookBack.getByTestId('band-line')).toHaveText(/^(It went well\.|Parts of it went wrong\.|It went badly\.)$/)
+  await expect(lookBack.getByTestId('lookback-row')).toHaveCount(DECISIONS)
+  await expect(lookBack.getByRole('heading', { name: 'Which decision would you change, if any?' })).toBeVisible()
+  await expect(lookBack.getByRole('button', { name: /Change this one/ })).toHaveCount(DECISIONS)
+  await expect(lookBack.getByText('Doors you closed').first()).toBeVisible()
+  await expect(alice.page.getByTestId('compared')).toHaveCount(0)
+  await expect(alice.page.getByTestId('debrief')).toHaveCount(0)
+  await expect(alice.page.locator('body')).not.toContainText(/\/ 100|biggest single fix|Every point you lost/)
+
+  // 1c. One hint: pick a decision, read one line; after a reload the line stays and the link is gone.
+  await lookBack.getByRole('button', { name: "I'm stuck: give me a hint" }).click()
+  const picker = alice.page.getByRole('group', { name: 'Which decision would you change, if any?' })
+  await expect(picker.getByLabel('None, I would keep them all')).toHaveCount(1)
+  await expect(picker.getByRole('radio')).toHaveCount(DECISIONS + 1)
+  await picker.getByLabel('Decision 1', { exact: true }).check()
+  await picker.getByRole('button', { name: 'Get my hint' }).click()
+  await expect(alice.page.getByTestId('hint')).toHaveCount(1, { timeout: 15_000 })
+  const hintLine = (await alice.page.getByTestId('hint').innerText()).replace(/^Your hint:\s*/, '')
+  expect(hintLine.length).toBeGreaterThan(10)
+  await expect(alice.page.getByRole('button', { name: "I'm stuck: give me a hint" })).toHaveCount(0)
+  await alice.page.reload()
+  await expect(alice.page.getByTestId('hint')).toContainText(hintLine, { timeout: 15_000 })
+  await expect(alice.page.getByRole('button', { name: "I'm stuck: give me a hint" })).toHaveCount(0)
+
+  // 1d. At the bottom only, the exact score, on request.
+  const reveal = alice.page.getByRole('button', { name: 'Show my exact score' })
+  await expect(reveal).toHaveCount(1)
+  await reveal.click()
   const debrief = alice.page.getByTestId('debrief')
   await expect(debrief.getByTestId('score')).toHaveText(/^\d{1,3} \/ 100$/, { timeout: 15_000 })
   await expect(debrief.getByTestId('demerits').locator('li')).toHaveCount(DECISIONS)
   await expect(debrief.getByTestId('why')).toHaveCount(DECISIONS)
+  await expect(alice.page.getByTestId('lookback')).toHaveCount(0)
+  // The tunnel strip: four nodes with a grade in words, how many paths from there still end well, and the start.
+  await expect(alice.page.getByTestId('tunnel-start')).toHaveText(/^At the start: [\d,]+ of 6,561 paths ended well\.$/)
+  const nodes = alice.page.getByTestId('tunnel-nodes').locator('li')
+  await expect(nodes).toHaveCount(DECISIONS)
+  for (let k = 0; k < DECISIONS; k++) {
+    await expect(nodes.nth(k)).toContainText(/Best|Slip|Mistake|Blunder/)
+    await expect(nodes.nth(k)).toContainText(new RegExp(`Paths from here that still end well: [\\d,]+ of ${(9 ** (DECISIONS - 1 - k)).toLocaleString('en-US')}`))
+  }
+  await expect(debrief.getByRole('link', { name: /Compare with the run you rewound/ })).toHaveCount(0)
 
   // 2. Rewind to decision 3: the earlier choice there is blocked.
   await debrief.getByRole('button', { name: 'Rewind to decision 3' }).click()
@@ -165,6 +218,9 @@ test('play, rewind, compare; runs stay private; hidden text stays on the server'
   const box = alice.page.getByTestId('decision')
   await expect(box.getByText(`Decision 3 of ${DECISIONS}`)).toBeVisible({ timeout: 15_000 })
   await expect(alice.page.getByTestId('story-so-far').locator('li')).toHaveCount(2)
+  await expect(alice.page.getByTestId('arrival')).toHaveText(
+    'Change your choice here. Everything after it stays as you played it last time and plays out again from your new choice.',
+  )
   await box.getByTestId('approaches').getByRole('button').nth(0).click()
   await expect(box.getByTestId('ways').getByRole('radio').nth(0)).toBeDisabled({ timeout: 15_000 })
   // The approach is stored on the server: a reload shows its ways again, never the other approaches.
@@ -173,15 +229,29 @@ test('play, rewind, compare; runs stay private; hidden text stays on the server'
   await expect(box.getByTestId('approaches')).toHaveCount(0)
   await expect(box.getByTestId('ways').getByRole('radio').nth(0)).toBeDisabled()
   await expect(box.getByText('Your earlier choice')).toBeVisible()
+  await expect(alice.page.getByTestId('arrival')).toBeVisible()
   await box.getByTestId('ways').getByRole('radio').nth(1).click()
   await box.getByRole('button', { name: 'Lock in' }).click()
-  await choose(alice.page, 4, ...secondPicks[3])
+  // The run finishes at the rewound decision: decision 4 is kept as played the first time.
+  await expect(alice.page.getByTestId('lookback')).toBeVisible({ timeout: 15_000 })
   const rewoundRun = alice.page.url()
 
-  // Two different choices have now been tried at decisions 3 and 4, so their reasons are unlocked.
+  // The look-back screen of the rewound run: what changed, what was kept, and how it compares, with no numbers.
+  const rows = alice.page.getByTestId('lookback-row')
+  await expect(rows).toHaveCount(DECISIONS)
+  await expect(alice.page.getByText('Changed', { exact: true })).toHaveCount(1)
+  await expect(rows.nth(2).getByText('Changed', { exact: true })).toBeVisible()
+  await expect(alice.page.getByText('Same as last time', { exact: true })).toHaveCount(1)
+  await expect(rows.nth(3).getByText('Same as last time', { exact: true })).toBeVisible()
+  await expect(alice.page.getByTestId('compared')).toHaveText(/^Compared with the run you rewound: (better|worse|the same)\.$/)
+  await expect(alice.page.locator('body')).not.toContainText(/\/ 100|biggest single fix/)
+  await alice.page.getByRole('button', { name: 'Show my exact score' }).click()
+  await expect(alice.page.getByTestId('debrief')).toBeVisible({ timeout: 15_000 })
+
+  // Two different choices were tried at decision 3, so its reason is unlocked; decision 4 was only ever played one way.
   const demerits = alice.page.getByTestId('demerits').locator('li')
   await expect(demerits.nth(2).getByTestId('why')).toContainText('Why:', { timeout: 15_000 })
-  await expect(demerits.nth(3).getByTestId('why')).toContainText('Why:')
+  await expect(demerits.nth(3).getByTestId('why')).toContainText('Reason locked')
 
   await alice.page.getByRole('link', { name: /Compare with the run you rewound/ }).click()
   await alice.page.waitForURL(/\/compare\//, { timeout: 15_000 })

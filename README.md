@@ -1,6 +1,6 @@
 # sequents
 
-Rehearse a hard everyday moment before it happens. A scenario is four decisions. At each one you first commit to one of three approaches, then pick one of three ways to carry it out. When the run ends, the debrief shows your score, every point you lost, the single biggest fix and how many of the possible paths you beat. You can rewind to any decision and compare two runs side by side.
+Rehearse a hard everyday moment before it happens. A scenario is four decisions. At each one you first commit to one of three approaches, then pick one of three ways to carry it out. When the run ends you look back at what happened at each decision, without a score, and can rewind any decision to try a different choice (the later choices stay as you played them). Asking for the exact score opens the debrief: your score, every point you lost, the single biggest fix, how many of the possible paths you beat and how your choices narrowed what came next. Two runs can be compared side by side from there.
 
 Live app: https://sequents.app.space
 
