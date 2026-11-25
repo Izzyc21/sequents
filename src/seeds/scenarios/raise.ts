@@ -324,7 +324,7 @@ const draft: ScenarioDraft = {
     },
   ],
   endings: {
-    good: 'You put your case on one page and named a figure backed by your sources, and your manager came back with $76,000 approved. You did not leave that offer as the last word: you answered it with your data, your number, or a pay review date six months out, confirmed in writing.',
+    good: 'You put your case on one page and backed the pay you asked for with your sources, and your manager came back with $76,000 approved. You did not leave that offer as the last word: you answered it with your data, your number, or a pay review date six months out, confirmed in writing.',
     ok: 'The request moved, but not as far as it could have. At least one step cost you timing, leverage or goodwill, and nothing on the table yet reaches the senior-level pay your sources point to.',
     bad: 'The request lost its force. More than one step cost you timing, leverage or goodwill, and at least one cost a lot. Nothing on the table reaches the senior-level pay your sources point to, and every later raise will build on whatever base you end up with.',
   },

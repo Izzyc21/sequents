@@ -2,7 +2,7 @@
  * Pictures for the "password expires today" scenario. Two versions
  * share one setting picture and the pictures of decisions 2 and 4; decisions
  * 1 and 3 differ in the details the pictures show (an address bar, a log row,
- * a phone line, a console card, a policy card and one inbox row).
+ * a phone line, a console card, a calendar card and one inbox row).
  *
  * Every drawn word comes from NOTICE_TEXT, and the screen-reader description
  * of each picture is built from the same constants, so the two cannot drift.
@@ -72,17 +72,17 @@ export const NOTICE_TEXT = {
     cardTitle: 'Places to check',
     places: [
       { label: 'IT page', value: 'Company intranet' },
-      { label: 'Admin message center', value: 'Admin console' },
+      { label: 'IT change calendar', value: 'Shared calendar' },
       { label: 'Sam (IT lead)', value: 'Phone off until 1 PM' },
     ],
   },
   d3: {
-    caption: 'Today, 9:55 AM. The web filter console, the password policy and the inbox list.',
+    caption: 'Today, 9:55 AM. The web filter console, the IT change calendar and the inbox list.',
     filterTitle: 'Web filter console: link destination (after the redirect)',
     tiles: ['312 blocked this week', 'Firewall: no alerts'],
     senderTitle: 'Web filter console: sender domain',
     sender: { label: 'harlowfinch.example', value: 'Business, allowed' },
-    policyTitle: 'Admin console: password policy',
+    policyTitle: 'IT change calendar: this week',
     inboxTitle: 'Inbox',
     commonRows: [
       { time: '9:05 AM', from: 'IT Support', subject: 'Your password expires today', unread: true },
@@ -96,7 +96,7 @@ export const NOTICE_TEXT = {
           { label: 'Category', value: 'Newly registered (3 days old)' },
           { label: 'Action', value: 'Allowed' },
         ],
-        policy: [{ label: 'Password expiry', value: 'Passwords never expire' }],
+        policy: [{ label: 'This week', value: 'Nothing booked' }],
         lastRow: { time: 'Last Thu', from: 'Reception', subject: 'Visitor parking reminder' },
       },
       {
@@ -105,10 +105,7 @@ export const NOTICE_TEXT = {
           { label: 'Category', value: 'Sign-in services (Microsoft)' },
           { label: 'Action', value: 'Allowed' },
         ],
-        policy: [
-          { label: 'Password expiry', value: 'Passwords expire every 90 days' },
-          { label: 'Next change window', value: 'Today' },
-        ],
+        policy: [{ label: 'Today, 5:00 PM', value: 'Password change, all staff (Sam)' }],
         lastRow: { time: 'Last Thu', from: 'IT Notices', subject: 'Password change planned this week' },
       },
     ],
@@ -215,11 +212,11 @@ function d3Spec(v: NoticeVersion): FrameSpec {
   const d = t.byVersion[v]
   const rows = [...t.commonRows, d.lastRow]
   const description =
-    `The web filter console, the password policy and the inbox list at 9:55 AM. ` +
+    `The web filter console, the IT change calendar and the inbox list at 9:55 AM. ` +
     `Card "${t.filterTitle}": ${pairWords(d.filter)}. Tiles: ${t.tiles.join('; ')}. Card "${t.senderTitle}": ${pairWords([t.sender])}. ` +
     `Card "${t.policyTitle}": ${pairWords(d.policy)}. ${t.inboxTitle} list, newest first: ${rows.map((r) => `${r.time}, ${r.from}: ${r.subject}`).join('; ')}.`
   return {
-    title: 'Picture: the filter console, the password policy and the inbox',
+    title: 'Picture: the filter console, the IT change calendar and the inbox',
     render: () => (
       <Scene description={description}>
         <Panel caption={t.caption} fill="lavender">

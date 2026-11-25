@@ -2,7 +2,7 @@ import type { ScenarioDraft } from '../../features/play/types'
 
 const draft: ScenarioDraft = {
   id: 'starter-angry-customer',
-  title: 'Two days offline and billed twice',
+  title: 'A customer writes in: two days offline and billed twice',
   situation:
     'You work phone support at a small internet provider. A customer calls to say his service has been down two days and that he was charged twice this month.',
   setting:

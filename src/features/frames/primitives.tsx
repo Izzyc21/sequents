@@ -1,6 +1,6 @@
 /**
  * Base pieces: panel, characters, sticky note, speech bubble.
- * Colours come from palette.ts; every word is real HTML text and decorative
+ * Colours come from palette.ts; every word is HTML text and decorative
  * drawings carry aria-hidden="true".
  */
 import { Children, type CSSProperties, type ReactNode } from 'react'

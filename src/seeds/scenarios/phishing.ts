@@ -41,8 +41,8 @@ const ENDINGS = [
   },
   {
     good: 'The notice was real: Sam’s scheduled password change, posted on the IT page the Thursday before. Nearly everyone changed their password before 5 PM, no more than three people were locked out, and nobody was named.',
-    ok: 'The notice was real: Sam’s scheduled password change. Parts of your response fit that, but at least one step cost the office time, interrupted work that did not need interrupting, or left people without clear word on what to do before the day was out. There was no attacker, so every cost was one the office paid itself.',
-    bad: 'The notice was real: Sam’s scheduled password change. More than one step cost the office time, interrupted work, or left people without clear word on what to do before the day was out, and at least one cost a lot. There was no attacker, so the disruption came from the response, not from the email.',
+    ok: 'The notice was real: Sam’s scheduled password change. Parts of your response fit that, but at least one step cost the office time, interrupted work that did not need interrupting, left people without clear word on what to do before the day was out, or gave staff an answer you could not stand behind. There was no attacker, so every cost was one the office paid itself.',
+    bad: 'The notice was real: Sam’s scheduled password change. More than one step cost the office time, interrupted work, left people without clear word on what to do before the day was out, or gave staff an answer you could not stand behind, and at least one cost a lot. There was no attacker, so the disruption came from the response, not from the email.',
   },
 ] as const
 
@@ -59,9 +59,9 @@ const DECISIONS: Decision[] = [
             text: 'Block her sign-in, then revoke her sessions and tokens; leave her password and methods as they are for now',
             v: [
               {
-                g: 'best',
-                o: 'By 9:26 she is blocked and the overseas session is dead; the log shows its next refresh failing. Her password and methods are untouched, ready for you to look at.',
-                w: 'Stopping new sign-ins first, then ending live ones, shuts both doors. Leaving her settings alone keeps what the attacker added visible while you decide what to remove.',
+                g: 'slip',
+                o: 'By 9:26 she is blocked and the overseas session is dead; its next refresh fails. The stolen password and anything added after her approval still work, so she cannot be let back in yet.',
+                w: 'Blocking and revoking stopped the attacker for now, but the stolen password and any added method work again the moment the block lifts. Replacing and clearing them in the same sitting makes the account safe to return.',
               },
               {
                 g: 'mistake',
@@ -71,17 +71,17 @@ const DECISIONS: Decision[] = [
             ],
           },
           {
-            text: 'Block her sign-in, revoke her sessions and tokens, then reset her password and clear all her sign-in methods',
+            text: 'Block her sign-in, revoke her sessions and tokens, then reset her password and clear her sign-in methods',
             v: [
               {
-                g: 'slip',
-                o: 'The account is blocked, the session ends and the new password is set. Every method is gone, the attacker’s too, before anyone noted what was there; Dana must set up her phone again.',
-                w: 'Safe, but out of order. With sign-in blocked and sessions revoked the attacker is already out, so clearing could wait; doing it now removed their method before it was recorded. Contain, record, remove.',
+                g: 'best',
+                o: 'By 9:28 she is blocked, the overseas session’s next refresh is refused and a new password is set. Every method is gone, and the audit log still shows when the extra one was added. Dana must set up her phone again.',
+                w: 'Blocking, revoking, replacing the stolen password and clearing every method leaves the attacker nothing to come back with. The audit log keeps the record of what was added, so removing it loses no evidence.',
               },
               {
                 g: 'blunder',
                 o: 'Her account is blocked, her password reset and her phone method cleared. She cannot approve anything until the phone is registered again, and the payroll run goes out at 2:10, after the cut-off.',
-                w: 'Clearing sign-in methods locks the owner out as surely as an intruder, and setting them up again takes time. With nothing wrong on the account, the price was a late payroll for no gain.',
+                w: 'Clearing every sign-in method means she must register again before she can work, and that takes time. The page and her sign-in record were normal, so the price was a late payroll for no gain.',
               },
             ],
           },
@@ -116,7 +116,7 @@ const DECISIONS: Decision[] = [
               {
                 g: 'best',
                 o: 'Her 9:19 sign-in shows her usual city and laptop, and the page address is Microsoft’s own sign-in page. She keeps working, and the payroll run is out by 11:40.',
-                w: 'The address, the sign-in record and the prompt on her phone all matched her normal use, so there was nothing to contain and nothing to take from her. Checking first spared her a lockout.',
+                w: 'The page address was Microsoft’s own and the sign-in record showed her usual city and browser, so there was nothing to contain and nothing to take from her. Checking first spared her a lockout.',
               },
             ],
           },
@@ -214,16 +214,16 @@ const DECISIONS: Decision[] = [
         text: 'Check the email against IT’s own records and channels',
         ways: [
           {
-            text: 'Check the IT page and admin message center for a password notice, and text Sam to ask if he sent it',
+            text: 'Check the IT page and the IT change calendar for a password notice, and text Sam to ask if he sent it',
             v: [
               {
-                g: 'best',
-                o: 'Neither the IT page nor the admin message center mentions a password change this week, and Sam’s phone is off until 1 PM. By 9:50 nothing shows that anyone at IT sent the email.',
-                w: 'Checking where IT would have recorded a notice gives an answer the email cannot give about itself. Finding no record and no way to ask Sam, you treat the email as not sent by IT.',
+                g: 'slip',
+                o: 'Neither the IT page nor the change calendar mentions a password change, and Sam’s phone is off until 1 PM. By 9:50 you can say IT did not send the email, but two more people have opened the link while you looked.',
+                w: 'Checking IT’s records was sound, but you already had the answer: the page Dana used was not Microsoft’s, and her account was signed in from Amsterdam minutes later. Staff could have been warned ten minutes sooner.',
               },
               {
                 g: 'best',
-                o: 'The IT page has a post from last Thursday about this week’s password change, and the admin message center lists the same reminder. Sam’s phone is off until 1 PM, but by 9:50 the records already answer you.',
+                o: 'The IT page has a post from last Thursday about this week’s password change, and the change calendar has it booked for today at 5 PM. Sam’s phone is off until 1 PM, but by 9:50 the records already answer you.',
                 w: 'Checking where IT would have recorded a notice gives an answer the email cannot give about itself. Here two records agreed, so you could rely on the email without having to reach Sam.',
               },
             ],
@@ -232,9 +232,9 @@ const DECISIONS: Decision[] = [
             text: 'Reply to the email and ask IT Support to confirm in writing that the notice came from them',
             v: [
               {
-                g: 'slip',
+                g: 'mistake',
                 o: 'You reply at 9:42 and an answer arrives within four minutes: “Yes, this is IT, please sign in today.” It comes from the same sender, so it proves nothing, and you have spent ten minutes on it.',
-                w: 'Asking the sender whether the sender is genuine only tests the sender’s own word, and a lure answers yes. It cost little but settled nothing; check records IT keeps elsewhere.',
+                w: 'Asking the sender whether the sender is genuine only tests the sender’s own word, and a lure answers yes. The reply also told whoever sent it that this mailbox is read and that IT is asking questions.',
               },
               {
                 g: 'slip',
@@ -264,17 +264,17 @@ const DECISIONS: Decision[] = [
         text: 'Find out how far the email spread and who has used the link',
         ways: [
           {
-            text: 'Run a message trace on the sender and subject, and list everyone who opened the message or used the link',
+            text: 'Run a message trace on the sender and subject to list everyone the message was delivered to',
             v: [
               {
-                g: 'slip',
-                o: 'The trace lists 28 recipients and eleven who opened it by 9:55. It is useful, but it does not say whether IT sent it, and you are still guessing when the office manager returns.',
-                w: 'Knowing how far a message spread does not settle where it came from. The trace was worth running after the source was checked, and it gave you a list you will need.',
+                g: 'mistake',
+                o: 'The trace lists all 30 recipients by 9:50. It cannot say who opened the message or used the link, and you are still without an answer when the office manager comes back.',
+                w: 'A delivery list is worth having, but it says nothing about who typed a password, and the address on Dana’s page already told you what the email was. Warning everyone came first; the list could follow.',
               },
               {
                 g: 'mistake',
-                o: 'The trace lists 28 recipients and fourteen who opened it. It shows how many used the link but not whether IT sent it, and by 10:05 you still cannot answer the office manager.',
-                w: 'Counting recipients does not say who sent a notice. IT’s own records would have, and the trace spent twenty minutes on the other question.',
+                o: 'The trace lists all 30 recipients by 9:50. It cannot say who opened the message or whether IT sent it, and by 10:05 you still cannot answer the office manager.',
+                w: 'A delivery list does not say who sent a notice. IT’s own records would have, and the trace spent twenty minutes on the other question.',
               },
             ],
           },
@@ -298,12 +298,12 @@ const DECISIONS: Decision[] = [
             v: [
               {
                 g: 'mistake',
-                o: 'The search finds the one message in 28 inboxes and nothing else, in forty minutes. It says nothing about who sent it or whether anyone used the link.',
+                o: 'The search finds the one message in 29 inboxes and nothing else, in forty minutes. It says nothing about who sent it or whether anyone used the link.',
                 w: 'A keyword search across everyone’s mail is slow and mostly noise, and it cannot show where a message came from.',
               },
               {
                 g: 'mistake',
-                o: 'The search finds the one notice in 28 inboxes and a vendor’s unrelated reminder, in forty minutes. It does not say who sent it.',
+                o: 'The search finds the one notice in 29 inboxes and a vendor’s unrelated reminder, in forty minutes. It does not say who sent it.',
                 w: 'A wide keyword search is slow and mostly noise, and it cannot show who a message came from.',
               },
             ],
@@ -332,9 +332,9 @@ const DECISIONS: Decision[] = [
             text: 'Tell everyone not to use the link and not to enter anything',
             v: [
               {
-                g: 'mistake',
-                o: 'Staff stop using the link. You were right, but with nothing to show for it two people ask whether to ignore IT’s notices from now on, and the office manager wants proof by noon.',
-                w: 'Warning people off before checking was a guess that happened to be right. When you cannot back it up, people stop trusting your next warning. Check, then say.',
+                g: 'best',
+                o: 'Staff stop using the link at 9:42. When the office manager asks how you know, you show her the page address and the Amsterdam sign-in, and one person comes over to say she opened the page but typed nothing.',
+                w: 'The page’s address was not Microsoft’s and Dana’s account was used from abroad minutes later, so the page takes passwords. That was enough to warn everyone at once, and a plain warning made it easy to come forward.',
               },
               {
                 g: 'blunder',
@@ -347,9 +347,9 @@ const DECISIONS: Decision[] = [
             text: 'Tell everyone to wait until Sam lands at 1 PM and to leave the email alone until then',
             v: [
               {
-                g: 'mistake',
-                o: 'Staff wait. Two who already entered their passwords say nothing, because nothing asked them to, and the page stays open for anyone else to use until 1 PM.',
-                w: 'Waiting for Sam keeps people from doing more but leaves anyone who already typed a password unreported for hours. Say what to do now, not only to wait.',
+                g: 'slip',
+                o: 'Staff leave the email alone. Two who already typed their passwords say nothing, because nothing told them they were at risk, and you find them in the afternoon logs.',
+                w: 'Waiting for Sam left the question open, so anyone who had already typed a password had no reason to think they were at risk. A plain warning would have told them.',
               },
               {
                 g: 'slip',
@@ -398,7 +398,7 @@ const DECISIONS: Decision[] = [
                 g: 'mistake',
                 raises: ['notice-removed'],
                 o: 'The office firewall stops the password page and the notice is purged. People in the office cannot change their passwords and the phones ring until 10:40, while those at home carry on.',
-                w: 'The same address with a narrower block still cut off the page the office needed. The real notice was removed and staff were left without a way to act on it.',
+                w: 'A firewall block reaches only the office, so people at home carried on, but in the office it cut off the very page the notice pointed to, and the purge took the instructions away too.',
               },
             ],
           },
@@ -424,7 +424,7 @@ const DECISIONS: Decision[] = [
         text: 'Check which accounts have used the link before changing anything',
         ways: [
           {
-            text: 'Search all 30 sign-in logs for new-country sign-ins and for password changes made through the link, then act on each',
+            text: 'Search all 30 sign-in logs for sign-ins from new countries or unknown devices since 9:05, then act on each',
             v: [
               {
                 g: 'mistake',
@@ -439,7 +439,7 @@ const DECISIONS: Decision[] = [
               },
               {
                 g: 'best',
-                o: 'The logs show no sign-ins from anywhere new, and fourteen people have already changed passwords through Microsoft’s own page. It matches the IT notice, so you leave the message in place.',
+                o: 'The logs show nothing from a new country or device since 9:05, only staff on their usual laptops and phones, several on Microsoft’s own password page. It matches the IT notice, so you leave the message in place.',
                 w: 'The sign-in logs showed ordinary activity and the changes arrived through Microsoft’s own page, so a genuine notice was being followed. Looking first kept you from breaking it.',
               },
             ],
@@ -470,7 +470,7 @@ const DECISIONS: Decision[] = [
               {
                 g: 'mistake',
                 o: 'Six reply that they did nothing and nine say they have changed their password. By 10:40 you are still counting replies and nobody has been told what to do.',
-                w: 'A reply is optional and slow, while the logs are complete and already exist. Counting replies spent the morning on what the sign-in logs would have shown in minutes.',
+                w: 'A reply is optional and slow, while the sign-in and audit logs already exist for every account. Counting replies spent the morning on what those logs would have shown in minutes.',
               },
             ],
           },
@@ -541,7 +541,7 @@ const DECISIONS: Decision[] = [
               {
                 g: 'best',
                 o: 'Four more people come to your desk within the hour, two of whom typed passwords. You reset and revoke each in minutes, and nobody is left hunting for a reset page.',
-                w: 'A spoken note plus a chat message reaches everyone at once and makes reporting safe. Doing the resets yourself also revokes sessions and checks methods, which a change they make alone does not.',
+                w: 'A spoken note plus a chat message reaches everyone at once and makes reporting safe. Checking each person yourself means each reset comes with revoked sessions and a look at their methods.',
               },
               {
                 g: 'best',

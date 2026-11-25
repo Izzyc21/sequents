@@ -2,7 +2,7 @@ import type { ScenarioDraft } from '../../features/play/types'
 
 const draft: ScenarioDraft = {
   id: 'starter-wifi-deadline',
-  title: 'The laptop has no internet an hour before the essay is due',
+  title: 'An hour before the essay is due, pages stop loading on the laptop',
   situation: 'My laptop shows Wi-Fi connected but loads nothing, an hour before my essay is due on the course portal.',
   setting:
     "It's 10:58 PM. Your essay is due at midnight on the course portal. Your Windows laptop says Wi-Fi is connected but nothing loads; the same thing happened for a few minutes on Tuesday. Your Android phone is on the desk at 21 percent, with full cell service. The portal texts a login code to your phone. The essay is saved, but two citations are still unformatted and the rubric grades citation style.",

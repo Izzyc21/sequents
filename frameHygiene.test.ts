@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
  */
 const DIR = fileURLToPath(new URL('./src/features/frames', import.meta.url))
 const CONTRACT = new Set(['types.ts', 'registry.ts', 'index.tsx'])
-const BANNED = /clue|decoy|correct|best|key|answer|trap|hint|tell|decisive|secret|hidden|suspicious|fake|phish|wrong/i
+const BANNED = /clue|decoy|correct|best|key|answer|trap|hint|tell|decisive|secret|hidden|suspicious|fake|phish|wrong|attack|lure|genuine|legit|scheduled|\breal\b/i
 
 describe('frame code hygiene', () => {
   const files = readdirSync(DIR).filter((f) => /\.(ts|tsx)$/.test(f) && !CONTRACT.has(f))

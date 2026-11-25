@@ -16,6 +16,7 @@ import { FRAMES } from './src/features/frames/registry'
 import type { FrameSet, FrameSpec } from './src/features/frames/types'
 import type { ScenarioDraft } from './src/features/play/types'
 import { STARTERS } from './src/seeds/starters'
+import { STARTER_VARIANTS } from './src/seeds/variants'
 
 const SLOTS = ['setting', 'd1', 'd2', 'd3', 'd4'] as const
 type Slot = (typeof SLOTS)[number]
@@ -91,15 +92,17 @@ describe('password notice versions', () => {
     expect(y).not.toContain('hf-secure-id')
   })
 
-  it('shows the link domain, policy and inbox row that differ at decision 3', () => {
+  it('shows the link domain, change calendar and inbox row that differ at decision 3', () => {
     const [x, y] = [visible(a.d3!), visible(b.d3!)]
     expect(x).toContain('hf-secure-id.example')
     expect(x).toContain('Newly registered (3 days old)')
-    expect(x).toContain('Passwords never expire')
+    expect(x).toContain('Nothing booked')
+    expect(x).not.toContain('Password change, all staff')
     expect(x).toContain('Visitor parking reminder')
     expect(y).toContain('login.microsoftonline.com')
     expect(y).toContain('Sign-in services (Microsoft)')
-    expect(y).toContain('Passwords expire every 90 days')
+    expect(y).toContain('Password change, all staff (Sam)')
+    expect(y).not.toContain('Nothing booked')
     expect(y).toContain('Password change planned this week')
     expect(y).not.toContain('hf-secure-id')
   })
@@ -107,7 +110,7 @@ describe('password notice versions', () => {
   it('keeps the setting free of any sign of which version it is', () => {
     const out = visible(a.setting!)
     expect(out).toContain('https://go.harlowfinch.example/r/7Fq2')
-    expect(out).not.toMatch(/microsoftonline|hf-secure|Amsterdam|Newly registered|expire every/)
+    expect(out).not.toMatch(/microsoftonline|hf-secure|Amsterdam|Newly registered|Nothing booked|all staff/)
   })
 })
 
@@ -117,6 +120,16 @@ describe('a run gets the pictures of its answers id', () => {
     expect(at('starter-phishing@v5')).toBe(markup(specsOf(v0).d1!))
     expect(at('starter-phishing@v5.1')).toBe(markup(specsOf(v1).d1!))
     expect(at('starter-phishing@v5')).not.toBe(at('starter-phishing@v5.1'))
+  })
+
+  it('pairs each picture version with the answers seeded under the same number', () => {
+    // Answers "<id>@v5" come from the starter itself and "<id>@v5.1" from its first registered variant.
+    const main = STARTERS.find((s) => s.id === 'starter-phishing')!
+    const hidden = STARTER_VARIANTS['starter-phishing'][0]
+    expect(main.endings.ok).toMatch(/^The email was an attack/)
+    expect(hidden.endings.ok).toMatch(/^The notice was real/)
+    expect(visible(specsOf(framesFor('starter-phishing@v5')!).d1!)).toContain('hf-secure-id')
+    expect(visible(specsOf(framesFor('starter-phishing@v5.1')!).d1!)).not.toContain('hf-secure-id')
   })
 
   it('keeps them for runs seeded under a later version, and gives none to older runs', () => {
