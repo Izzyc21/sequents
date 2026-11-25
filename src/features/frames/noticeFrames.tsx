@@ -45,11 +45,11 @@ export const NOTICE_TEXT = {
       {
         url: 'https://login.microsoftonline.com.hf-secure-id.example/common/oauth2',
         rows: [
-          ['9:19 AM', 'Dana Reyes', 'Lagos', 'Firefox on Linux', 'Success'],
+          ['9:19 AM', 'Dana Reyes', 'Amsterdam', 'Firefox on Linux', 'Success'],
           ['8:47 AM', 'Dana Reyes', 'New York', 'Edge on Windows', 'Success'],
           ['Mon 4:48 PM', 'Dana Reyes', 'Newark', 'Edge on Windows', 'Success'],
         ],
-        prompt: 'Approve sign-in? Location: Lagos',
+        prompt: 'Approve sign-in? Location: Amsterdam',
       },
       {
         url: 'https://login.microsoftonline.com/harlowfinch.example/oauth2/authorize',

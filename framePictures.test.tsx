@@ -83,11 +83,11 @@ describe('password notice versions', () => {
   it('shows the sign-in page address, log row and phone line that differ at decision 1', () => {
     const [x, y] = [visible(a.d1!), visible(b.d1!)]
     expect(x).toContain('https://login.microsoftonline.com.hf-secure-id.example/common/oauth2')
-    expect(x).toContain('Lagos')
+    expect(x).toContain('Amsterdam')
     expect(x).not.toContain('Location: New York')
     expect(y).toContain('https://login.microsoftonline.com/harlowfinch.example/oauth2/authorize')
     expect(y).toContain('Location: New York')
-    expect(y).not.toContain('Lagos')
+    expect(y).not.toContain('Amsterdam')
     expect(y).not.toContain('hf-secure-id')
   })
 
@@ -107,7 +107,7 @@ describe('password notice versions', () => {
   it('keeps the setting free of any sign of which version it is', () => {
     const out = visible(a.setting!)
     expect(out).toContain('https://go.harlowfinch.example/r/7Fq2')
-    expect(out).not.toMatch(/microsoftonline|hf-secure|Lagos|Newly registered|expire every/)
+    expect(out).not.toMatch(/microsoftonline|hf-secure|Amsterdam|Newly registered|expire every/)
   })
 })
 
