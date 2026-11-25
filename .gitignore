@@ -16,3 +16,4 @@ src/modals.tsx
 
 # Local notes, not part of the code
 *.md
+!README.md
