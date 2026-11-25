@@ -2,8 +2,8 @@
  * Pictures for the "password expires today" scenario. Two versions
  * share one setting picture and the pictures of decisions 2 and 4; decisions
  * 1 and 3 differ in the details the pictures show (an address bar, a log row,
- * a phone line, a console card, a calendar card and one inbox row). What the
- * people in the pictures think is the same in both versions.
+ * a phone line, a console card, a calendar card and one inbox row). The
+ * pictures of decisions 2 and 4 also show what two of the people there think.
  *
  * Every drawn word comes from NOTICE_TEXT, and the screen-reader description
  * of each picture is built from the same constants, so the two cannot drift.
@@ -30,7 +30,6 @@ export const NOTICE_TEXT = {
     linkUrl: 'https://go.harlowfinch.example/r/7Fq2',
     caption: 'Today, 9:05 AM. The email as it arrived, and Dana at your desk at 9:20 AM.',
     dana: 'I clicked it, typed my password and approved the prompt on my phone.',
-    thoughts: [['Dana', 'Was I supposed to do something different?']] as Thought[],
   },
   d1: {
     caption: "Today, 9:22 AM. Dana's laptop, her phone and the admin console.",
@@ -43,10 +42,6 @@ export const NOTICE_TEXT = {
     phoneTime: '9:22',
     phoneApp: 'Authenticator',
     phoneAt: '9:19 AM',
-    thoughts: [
-      ['Dana', 'Two more steps and payroll is done. Please let me finish.'],
-      ['Lena', 'If her account goes, does mine go next?'],
-    ] as Thought[],
     byVersion: [
       {
         url: 'https://login.microsoftonline.com.hf-secure-id.example/common/oauth2',
@@ -99,10 +94,6 @@ export const NOTICE_TEXT = {
       { time: 'Tue', from: 'Facilities', subject: 'Printer moved to floor 2' },
       { time: 'Mon', from: 'Accounts', subject: 'Month-end timetable' },
     ],
-    thoughts: [
-      ['Office manager', 'More people are opening it while we stand here.'],
-      ['Tom', 'If this came from IT, people still need instructions they can use.'],
-    ] as Thought[],
     byVersion: [
       {
         filter: [
@@ -151,7 +142,7 @@ function settingSpec(): FrameSpec {
   const e = T.email
   const description =
     `An email in an inbox at 9:05 AM. From: ${e.fromName} <${e.fromAddress}>. To: ${e.to}. Date: ${e.date}. Subject: ${e.subject}. ` +
-    `${e.body.join(' ')} A button reads "${e.linkLabel}". Link goes to: ${e.linkUrl}. Dana, at your desk, says: "${e.dana}" ${thoughtWords(e.thoughts)}`
+    `${e.body.join(' ')} A button reads "${e.linkLabel}". Link goes to: ${e.linkUrl}. Dana, at your desk, says: "${e.dana}"`
   return {
     title: 'Picture: the email in your inbox',
     render: () => (
@@ -164,7 +155,6 @@ function settingSpec(): FrameSpec {
                 <SpeechBubble speaker="Dana">{e.dana}</SpeechBubble>
                 <Character name="Dana" mood="worried" shirt={ROSE} />
               </div>
-              <Thoughts items={e.thoughts} />
             </>
           }
         />
@@ -180,7 +170,7 @@ function d1Spec(v: NoticeVersion): FrameSpec {
     `Dana's laptop, her phone and the admin console at 9:22 AM. On the laptop, a browser tab titled "${t.tab}" shows a sign-in page. ` +
     `The address bar reads ${d.url}, with a padlock marked secure. The page reads: ${t.page.join('. ')}. A banner on the laptop reads "${t.payroll}". ` +
     `The admin console sign-in log has the columns ${t.columns.join(', ')}. Its rows: ${d.rows.map(rowWords).join('; ')}. ` +
-    `Dana's phone shows a notice from ${t.phoneApp} at ${t.phoneAt}: "${d.prompt}". A sticky note reads "${t.sticky}". ${thoughtWords(t.thoughts)}`
+    `Dana's phone shows a notice from ${t.phoneApp} at ${t.phoneAt}: "${d.prompt}". A sticky note reads "${t.sticky}".`
   return {
     title: "Picture: Dana's laptop and the admin console",
     render: () => (
@@ -197,7 +187,6 @@ function d1Spec(v: NoticeVersion): FrameSpec {
             <Phone time={t.phoneTime} battery="80%" notices={[{ app: t.phoneApp, text: d.prompt, time: t.phoneAt }]} />
             <StickyNote>{t.sticky}</StickyNote>
           </div>
-          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),
@@ -237,7 +226,7 @@ function d3Spec(v: NoticeVersion): FrameSpec {
   const description =
     `The web filter console, the IT change calendar and the inbox list at 9:55 AM. ` +
     `Card "${t.filterTitle}": ${pairWords(d.filter)}. Tiles: ${t.tiles.join('; ')}. Card "${t.senderTitle}": ${pairWords([t.sender])}. ` +
-    `Card "${t.policyTitle}": ${pairWords(d.policy)}. ${t.inboxTitle} list, newest first: ${rows.map((r) => `${r.time}, ${r.from}: ${r.subject}`).join('; ')}. ${thoughtWords(t.thoughts)}`
+    `Card "${t.policyTitle}": ${pairWords(d.policy)}. ${t.inboxTitle} list, newest first: ${rows.map((r) => `${r.time}, ${r.from}: ${r.subject}`).join('; ')}.`
   return {
     title: 'Picture: the filter console, the IT change calendar and the inbox',
     render: () => (
@@ -250,7 +239,6 @@ function d3Spec(v: NoticeVersion): FrameSpec {
           <ConsoleCard title={t.senderTitle} rows={[t.sender]} />
           <ConsoleCard title={t.policyTitle} rows={d.policy} />
           <InboxList title={t.inboxTitle} rows={rows} />
-          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),

@@ -1,5 +1,5 @@
 /**
- * /compare/:id: a rewound run next to the run it was rewound from.
+ * /compare/:id: a last-chance run next to the first try it was rewound from.
  * Shows both scores, where the picks split, and what each decision cost in
  * each run. Both runs belong to the viewer (players read only their own).
  * Both scores must be revealed first, so a comparison never shows a score
@@ -27,14 +27,14 @@ export default function ComparePage() {
     return <Message text="Finish this run first, then compare." to={`/run/${id}`} label="Back to the run" />
   }
   if (!scoreVisible(mine)) {
-    return <Message text="Look back at this run and show its score first, then compare." to={`/run/${id}`} label="Back to the run" />
+    return <Message text="Open this run and see where its points went first, then compare." to={`/run/${id}`} label="Back to the run" />
   }
   if (!scoreVisible(theirs)) {
     return (
       <Message
-        text="The score of the run you rewound is still hidden. Open it and show its score, then compare."
+        text="Your first try's debrief is not showing yet. Open it and see where your points went, then compare."
         to={`/run/${mine.parentRunId}`}
-        label="Open the earlier run"
+        label="Open your first try"
       />
     )
   }
@@ -56,8 +56,8 @@ export default function ComparePage() {
 
       <section className="mt-6 grid gap-4 sm:grid-cols-2" data-testid="endings">
         {[
-          { label: 'Earlier run', run: theirs },
-          { label: 'This run', run: mine },
+          { label: 'First try', run: theirs },
+          { label: 'Last chance', run: mine },
         ].map(({ label, run }) => (
           <div key={label} className="rounded-lg border border-border bg-card p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
@@ -96,8 +96,8 @@ export default function ComparePage() {
               <p className="mt-1 text-sm text-muted-foreground">{decision.prompt}</p>
               <div className="mt-2 grid gap-3 text-sm sm:grid-cols-2">
                 {[
-                  { label: 'Earlier', run: theirs },
-                  { label: 'This run', run: mine },
+                  { label: 'First try', run: theirs },
+                  { label: 'Last chance', run: mine },
                 ].map(({ label, run }) => (
                   <div key={label}>
                     <p className="text-muted-foreground">

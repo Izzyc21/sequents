@@ -1,12 +1,11 @@
 /**
  * Pictures for the "no internet before the essay is due" scenario: one
- * setting picture and one per decision, for a single version. Each picture
- * also shows what the people around you think.
+ * setting picture and one per decision, for a single version.
  *
  * Every drawn word comes from DEADLINE_TEXT, and the screen-reader description
  * of each picture is built from the same constants.
  */
-import { Browser, Clock, ConsoleCard, Each, Laptop, Panel, Phone, Router, Scene, SpeechBubble, StatTile, StickyNote, Thoughts, Toast, Tray, thoughtWords, type Light, type Thought } from './kit'
+import { Browser, Clock, ConsoleCard, Each, Laptop, Panel, Phone, Router, Scene, SpeechBubble, StatTile, StickyNote, Toast, Tray, type Light } from './kit'
 import { BLUE, INK, PAPER, SKY, SLATE, STEEL } from './palette'
 import type { FrameSet, FrameSpec } from './types'
 
@@ -27,7 +26,6 @@ export const DEADLINE_TEXT = {
     phone: { time: '10:58', battery: '21%', app: 'Mobile network', text: 'Full signal' },
     router: 'Home router',
     sticky: 'Essay due 12:00 AM',
-    thoughts: [['Roommate', 'An hour is loads of time. No need to rush.']] as Thought[],
   },
   d1: {
     caption: 'Today, 10:58 PM. The laptop screen, the phone and the cable.',
@@ -38,10 +36,6 @@ export const DEADLINE_TEXT = {
     flyoutTitle: 'Wi-Fi',
     flyout: [{ label: 'Status', value: 'Connected, secured' }],
     cable: 'USB cable',
-    thoughts: [
-      ['Roommate', "Whatever's going on, don't lose that draft."],
-      ['Classmate', 'Still on my last paragraph. This is going to be close.'],
-    ] as Thought[],
   },
   d2: {
     caption: 'Today, 11:15 PM. The portal and the essay.',
@@ -54,10 +48,6 @@ export const DEADLINE_TEXT = {
     wordCount: 'Word count: 1,480',
     tray: [{ label: 'Internet', detail: 'connected, dropped twice' }],
     time: '11:15 PM',
-    thoughts: [
-      ['Roommate', "I'd be a wreck if this were my essay."],
-      ['Classmate', 'Losing marks over formatting would drive me mad.'],
-    ] as Thought[],
   },
   d3: {
     caption: 'Today, 11:42 PM. The portal.',
@@ -66,10 +56,6 @@ export const DEADLINE_TEXT = {
     status: 'Submitting…',
     classmate: ['Classmate', 'mine is stuck too'],
     time: '11:42 PM',
-    thoughts: [
-      ['Classmate', 'I want something with a time on it before midnight.'],
-      ['Roommate', 'Who knows what the instructor will accept at this point.'],
-    ] as Thought[],
   },
   d4: {
     caption: 'Today, 11:55 PM. The portal after the upload.',
@@ -80,10 +66,6 @@ export const DEADLINE_TEXT = {
     button: 'Submit',
     saved: 'Last saved 11:54 PM',
     time: '11:55 PM',
-    thoughts: [
-      ['Roommate', 'Finally. Can we turn the lights off now?'],
-      ['Classmate', "I won't relax until I've seen it with my own eyes."],
-    ] as Thought[],
   },
 }
 
@@ -106,7 +88,7 @@ function settingSpec(): FrameSpec {
   const description =
     `Your desk at 10:58 PM. A laptop shows an essay window titled "${t.essay}". Its taskbar reads ${trayWords(t.tray)}; the time is ${t.time}. ` +
     `Your phone shows ${t.phone.battery} battery, and a ${t.phone.app} line reads "${t.phone.text}". A router named "${t.router}" has these lights: ${lightWords}. ` +
-    `A sticky note reads "${t.sticky}". A clock reads ${t.time}. ${thoughtWords(t.thoughts)}`
+    `A sticky note reads "${t.sticky}". A clock reads ${t.time}.`
   return {
     title: 'Picture: your desk at 10:58 PM',
     render: () => (
@@ -124,7 +106,6 @@ function settingSpec(): FrameSpec {
             <Clock time={t.time} />
             <StickyNote>{t.sticky}</StickyNote>
           </div>
-          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),
@@ -137,7 +118,7 @@ function d1Spec(): FrameSpec {
   const description =
     `The laptop screen, the phone and the cable at 10:58 PM. A notice from ${t.toastApp} reads "${t.toastTitle}. ${t.toastBody}" with buttons "${t.buttons.join('" and "')}". ` +
     `The taskbar reads ${trayWords(s.tray)}. A Wi-Fi panel reads ${t.flyout.map((r) => `${r.label}: ${r.value}`).join('. ')}. ` +
-    `The phone beside it shows ${s.phone.battery} battery. A ${t.cable} lies across the desk. The router lights: ${lightWords}. ${thoughtWords(t.thoughts)}`
+    `The phone beside it shows ${s.phone.battery} battery. A ${t.cable} lies across the desk. The router lights: ${lightWords}.`
   return {
     title: 'Picture: the laptop screen',
     render: () => (
@@ -172,7 +153,6 @@ function d1Spec(): FrameSpec {
             </div>
             <Router name={s.router} lights={LIGHTS} />
           </div>
-          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),
@@ -183,7 +163,7 @@ function d2Spec(): FrameSpec {
   const t = T.d2
   const description =
     `The portal and the essay at 11:15 PM. A browser tab titled "${t.tab}" at the address ${t.url} shows the heading "${t.heading}" and a drop zone "${t.drop}". ` +
-    `Beside it, an essay window titled "${t.essay}" shows "${t.essayNote}" and "${t.wordCount}". The taskbar reads ${trayWords(t.tray)}; the time is ${t.time}. ${thoughtWords(t.thoughts)}`
+    `Beside it, an essay window titled "${t.essay}" shows "${t.essayNote}" and "${t.wordCount}". The taskbar reads ${trayWords(t.tray)}; the time is ${t.time}.`
   return {
     title: 'Picture: the portal and the essay',
     render: () => (
@@ -199,7 +179,6 @@ function d2Spec(): FrameSpec {
             <Tray items={t.tray} time={t.time} />
           </Laptop>
           <Clock time={t.time} />
-          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),
@@ -210,7 +189,7 @@ function d3Spec(): FrameSpec {
   const t = T.d3
   const description =
     `The portal at 11:42 PM. A browser tab titled "${t.tab}" at the address ${t.url} shows "${t.status}" and a progress bar. ` +
-    `A classmate chat window shows ${t.classmate[0]}: "${t.classmate[1]}". A clock reads ${t.time}. ${thoughtWords(t.thoughts)}`
+    `A classmate chat window shows ${t.classmate[0]}: "${t.classmate[1]}". A clock reads ${t.time}.`
   return {
     title: 'Picture: the portal at 11:42 PM',
     render: () => (
@@ -226,7 +205,6 @@ function d3Spec(): FrameSpec {
             {t.classmate[1]}
           </SpeechBubble>
           <Clock time={t.time} />
-          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),
@@ -237,7 +215,7 @@ function d4Spec(): FrameSpec {
   const t = T.d4
   const description =
     `The portal after the upload at 11:55 PM. A browser tab titled "${t.tab}" at the address ${t.url} shows a file row "${t.file}", ` +
-    `a smaller line "${t.status}", a button "${t.button}" and the line "${t.saved}". A clock reads ${t.time}. ${thoughtWords(t.thoughts)}`
+    `a smaller line "${t.status}", a button "${t.button}" and the line "${t.saved}". A clock reads ${t.time}.`
   return {
     title: 'Picture: the portal after the upload',
     render: () => (
@@ -250,7 +228,6 @@ function d4Spec(): FrameSpec {
             <p className="m-0 mt-2 text-xs font-semibold">{t.saved}</p>
           </Browser>
           <Clock time={t.time} />
-          <Thoughts items={t.thoughts} />
         </Panel>
       </Scene>
     ),

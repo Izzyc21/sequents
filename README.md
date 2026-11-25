@@ -1,8 +1,8 @@
 # sequents
 
-Rehearse a hard everyday moment before it happens. A scenario is four decisions. At each one you first commit to one of three approaches, then pick one of three ways to carry it out. When the run ends you look back at what happened at each decision, without a score, and can rewind any decision to try a different choice (the later choices stay as you played them). Asking for the exact score opens the debrief: your score, every point you lost, the single biggest fix, how many of the possible paths you beat and how your choices narrowed what came next. Two runs can be compared side by side from there.
+Rehearse a hard everyday moment before it happens. A scenario is four decisions. At each one you first commit to one of three approaches, then pick one of three ways to carry it out. When the run ends you see your total score and how it ended, and what happened at each decision, but not where the points went. Then you get one last chance: change any one decision, once (the later choices stay as you played them and play out again from the new choice). After the last chance, or straight away if you keep the run as it is, the debrief shows every point you lost on both tries, the single biggest fix, how many of the possible paths you beat and how your choices narrowed what came next. The first try and the last chance can be compared side by side.
 
-Two scenarios are illustrated with flat pictures drawn in HTML, CSS and SVG (`src/features/frames/`), one per decision, every word in them real text. In each, at least one decision turns on a detail only the pictures show. The password email scenario has two hidden versions whose text is identical, a real IT notice and an attack; the server picks one at random when a run starts, a rewind keeps it, and only the pictures tell them apart. Each picture also shows, in thought bubbles, what the people around you think but do not say.
+Two scenarios are illustrated with flat pictures drawn in HTML, CSS and SVG (`src/features/frames/`), one per decision, every word in them real text. In each, at least one decision turns on a detail only the pictures show. The password email scenario has two hidden versions whose text is identical, a real IT notice and an attack; the server picks one at random when a run starts, the last chance keeps it, and only the pictures tell them apart. Two of its pictures also show, in thought bubbles, what two of the people around you think but do not say.
 
 Live app: https://sequents.app.space
 
@@ -58,7 +58,7 @@ src/
     generations-schema.ts        ledger of AI calls (daily caps)
     users-schema.ts, admin-schema.ts
   actions/                     Server actions, POST /api/actions/<name>
-    play.ts                      seedStarters, startRun, commit, choose, rewind, explain; SEED_VERSION
+    play.ts                      seedStarters, startRun, commit, choose, rewind, reveal, explain; SEED_VERSION
     generate.ts                  makeScenario (the AI scenario writer)
     visibility.ts                setVisibility, unpublish
     shared.ts                    parsing, loaders, canPlay
@@ -77,11 +77,11 @@ src/
   pages/
     index.tsx                    landing page
     (app)/(protected)/home.tsx   /home: recent runs and the scenario gallery
-    (app)/(protected)/run/[id].tsx      /run/:id: commit, choose, look back, hint, debrief, rewind
+    (app)/(protected)/run/[id].tsx      /run/:id: commit, choose, look back, last chance, debrief
     (app)/(protected)/compare/[id].tsx  /compare/:id: two runs side by side
   server/                      action, HTTP and realtime routes
 tests/                         Playwright suites: sequents.spec.ts (two-user play,
-                               rewind, compare, privacy), generate.spec.ts,
+                               last chance, compare, privacy), generate.spec.ts,
                                smoke.spec.ts, api.spec.ts, collab.spec.ts
 bundle.test.ts                 scans the built client for any hidden scenario text
 src/**/*.test.ts               unit tests next to the code (engine, actions, schemas)

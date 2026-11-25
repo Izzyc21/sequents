@@ -1,15 +1,16 @@
 /**
- * `runs`: one play-through of a scenario by one player. A rewind creates a
- * new run that points at the run it came from (parentRunId) and the decision
- * where it splits (branchAt), so the two can be compared.
+ * `runs`: one play-through of a scenario by one player. A first try's one
+ * last chance (rewind) creates a new run that points at the run it came from
+ * (parentRunId) and the decision where it splits (branchAt), so the two can
+ * be compared.
  *
  * Players only ever receive their own runs (read 'own' on playerId). Nobody
  * writes runs from the browser: the startRun, commit, choose and rewind actions do,
  * after checking the move is legal, so a player cannot set their own score.
  * A run holds grades and points once it ends, never the reasons: those come
- * from the explain action once unlocked. Only the reveal action writes
- * `hidden` and only the hint action writes `lookback`, so a hint and a reveal
- * sent at the same time cannot undo each other.
+ * from the explain action once unlocked. The page keeps a first try's grades
+ * and points out of view until its debrief shows (`hidden`); the row its
+ * owner receives still holds them.
  */
 import type { CollectionSchema } from 'deepspace/schema'
 
@@ -45,9 +46,9 @@ export const runsSchema: CollectionSchema = {
     { name: 'beats', storage: 'number', interpretation: 'plain' },
     { name: 'ending', storage: 'text', interpretation: 'plain' },
     { name: 'endingText', storage: 'text', interpretation: 'plain' },
-    // 1 while a finished run's score is hidden, 0 once revealed (see RunRow.hidden). A number, because stored booleans come back as 1/0.
+    // 1 while a finished first try's debrief is hidden, 0 once it shows (see RunRow.hidden). A number, because stored booleans come back as 1/0.
     { name: 'hidden', storage: 'number', interpretation: 'plain' },
-    // The run's one hint: { hintGuess, hint } (see RunRow.lookback).
+    // No longer written; kept so older rows still load (see RunRow.lookback).
     { name: 'lookback', storage: 'text', interpretation: { kind: 'json' } },
     // Paths that still end well after the first 0-4 choices (see RunRow.tunnel).
     { name: 'tunnel', storage: 'text', interpretation: { kind: 'json' } },

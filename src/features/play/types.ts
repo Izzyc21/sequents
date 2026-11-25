@@ -216,17 +216,19 @@ export interface RunRow {
   ending: Ending | ''
   endingText: string
   /**
-   * 1 while the page must keep this finished run's score hidden (written when
-   * the run ends), 0 once the player asks for it (the reveal action). Missing
-   * on rows written before it existed, which count as revealed. Only reveal
-   * writes it and only the hint action writes `lookback`, so the two never
-   * overwrite each other.
+   * 1 while the page shows a finished first try's look-back screen (its
+   * total score, but not where the points went) and its last chance is still
+   * open; 0 once the debrief may show. A first try ends at 1; it turns 0 when
+   * the player asks to see where the points went (the reveal action, which
+   * closes the last chance) or when its last-chance run finishes. A
+   * last-chance run ends at 0. Missing on rows written before it existed,
+   * which count as 0.
    */
   hidden?: number
   /**
-   * The run's one hint, written when the run ends: `hintGuess` is the
-   * decision (0-3) or 4 for "none" the hint was asked for, -1 before a hint;
-   * `hint` is its line. Missing on rows written before it existed.
+   * No longer written. Older rows may carry the one hint a run once had:
+   * { hintGuess, hint }. The hint was removed so that nothing points at a
+   * decision before the last chance is used.
    */
   lookback?: { hintGuess: number; hint: string }
   /**
@@ -236,12 +238,14 @@ export interface RunRow {
   tunnel?: number[]
 }
 
-/** Error text of the explain action for a finished run whose score has not been revealed yet. */
-export const NOT_REVEALED = 'Show your score first to see the reasons.'
-/** Error text of the hint action for a run whose score is already revealed (or that has no look-back state). */
-export const ALREADY_REVEALED = 'Your score is already showing, so there is no hint to give.'
+/** Error text of the explain action for a finished run whose debrief is not showing yet. */
+export const NOT_REVEALED = 'The reasons show once you have used your last chance or chosen to see where your points went.'
+/** Error text of the rewind action for a run that is a last chance, or already has one. */
+export const LAST_CHANCE_USED = 'This run already had its last chance. Start the scenario again to play it differently.'
+/** Error text of the rewind action for a first try whose debrief the player chose to see. */
+export const LAST_CHANCE_CLOSED = 'You chose to see where your points went, so this run has no last chance left. Start the scenario again.'
 
-/** True when the page may show this run's score: finished and not hidden (a missing `hidden` counts as revealed). */
+/** True when the page may show this run's debrief (every lost point): finished and not hidden (a missing `hidden` counts as revealed). */
 export const scoreVisible = (run: Pick<RunRow, 'status' | 'hidden'>): boolean => run.status === 'done' && run.hidden !== 1
 
 /**
@@ -281,20 +285,17 @@ export const baseAnswersId = (answersId: string): string => answersId.replace(/(
 /**
  * First try and best so far over a player's finished runs on one scenario's
  * seed version (every hidden version of it counts), oldest first by
- * `createdAt`; null when there are none. A score the player has not revealed
- * stays hidden: `first` is null when the first try is still hidden, and
- * `best` is the best revealed score (null when none is revealed), so the
- * debrief of one run never shows another run's hidden score.
+ * `createdAt`; null when there are none. Every finished run's total score
+ * counts: the look-back screen shows it too, and only the reasons stay hidden.
  */
 export function runHistory(
-  rows: { createdAt: string; data: Pick<RunRow, 'answersId' | 'score' | 'status' | 'hidden'> }[],
+  rows: { createdAt: string; data: Pick<RunRow, 'answersId' | 'score' | 'status'> }[],
   answersId: string,
-): { first: number | null; best: number | null } | null {
+): { first: number; best: number } | null {
   const base = baseAnswersId(answersId)
   const same = rows
     .filter((r) => r.data.status === 'done' && baseAnswersId(r.data.answersId) === base)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   if (!same.length) return null
-  const shown = same.filter((r) => scoreVisible(r.data)).map((r) => r.data.score)
-  return { first: scoreVisible(same[0].data) ? same[0].data.score : null, best: shown.length ? Math.max(...shown) : null }
+  return { first: same[0].data.score, best: Math.max(...same.map((r) => r.data.score)) }
 }

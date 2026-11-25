@@ -15,9 +15,6 @@ import {
   fromChoice,
   giveawayProblems,
   HEURISTICS,
-  hintFor,
-  HINT_NOWHERE,
-  NO_SINGLE_FIX,
   LENGTH_RULES,
   longestBestCount,
   mixProblems,
@@ -177,81 +174,6 @@ describe('tunnelCounts', () => {
   it('shrinks to nothing along a path that has lost every good ending', () => {
     const keys = wayKeysOf(fixture())
     expect(tunnelCounts(keys, [c(1, 2), c(1, 2), c(1, 2), c(1, 2)]).slice(1)).toEqual([expect.any(Number), 0, 0, 0])
-  })
-})
-
-describe('hintFor', () => {
-  const keys = wayKeysOf(fixture())
-  /** The hint a player gets for `guess` (4 = nowhere) after finishing `choices`. */
-  const hintOf = (choices: number[], guess: number, k = keys) => {
-    const { steps, score } = scoreRun(k, choices)
-    return hintFor(guess, score, steps, gainsByDecision(k, choices))
-  }
-  const MISTAKE = c(0, 2)
-  const SLIP = c(0, 1)
-
-  it('rule 1: a perfect run gets the same line for every guess, "none" included', () => {
-    for (let d = 0; d <= HINT_NOWHERE; d++) expect(hintOf([BEST, BEST, BEST, BEST], d)).toBe(NO_SINGLE_FIX)
-  })
-
-  it('rule 2: "none" after losing points, when one change would help', () => {
-    expect(hintOf([SLIP, BEST, BEST, BEST], HINT_NOWHERE)).toBe('One change would win points back. Look again.')
-  })
-
-  it('rule 3: no single change helps', () => {
-    const flat = wayKeysOf(fixture())
-    for (const decision of flat) for (const approach of decision) for (const way of approach) way.grade = 'slip'
-    for (const decision of flat) for (const approach of decision) for (const way of approach) delete way.ifRaised
-    const choices = [BEST, c(1, 1), c(2, 2), BEST]
-    expect(scoreRun(flat, choices).score).toBe(80)
-    // "None" reads exactly as on a perfect run, so it does not confirm the run lost points.
-    expect(hintOf(choices, HINT_NOWHERE, flat)).toBe(NO_SINGLE_FIX)
-    expect(hintOf(choices, 0, flat)).toBe('That one cost you, but changing it alone wins nothing back.')
-  })
-
-  it('rule 5: the guess is the one best place', () => {
-    expect(hintOf([BEST, BEST, MISTAKE, BEST], 2)).toBe('Yes. Changing that one decision would win back more than changing any other.')
-  })
-
-  it('rule 6: the guess is one of several best places', () => {
-    const blunders = [c(1, 2), c(1, 2), c(1, 2), c(1, 2)]
-    for (let d = 0; d < 4; d++) expect(hintOf(blunders, d)).toBe('Yes. That is one of the best places to change.')
-  })
-
-  it('rule 7: the guessed step was set up by an earlier choice that is a best place', () => {
-    const custom = wayKeysOf(fixture())
-    // Decision 3 has no best way and no way worse than a mistake except the flagged one, so fixing decision 1 gains more.
-    for (const approach of custom[2]) for (const way of approach) way.grade = 'mistake'
-    custom[2][0][1].grade = 'slip'
-    const choices = [RAISE, BEST, HIT, BEST]
-    const gains = gainsByDecision(custom, choices)
-    expect(gains).toEqual([20, 0, 8, 0])
-    expect(hintOf(choices, 2, custom)).toBe('It went wrong there, but an earlier choice set it up.')
-    // A guess at the decision that set it up is the best place itself.
-    expect(hintOf(choices, 0, custom)).toBe('Yes. Changing that one decision would win back more than changing any other.')
-  })
-
-  it('rule 8: it cost points but is not the biggest fix; points to the nearest best place', () => {
-    const later = [SLIP, BEST, MISTAKE, BEST]
-    expect(hintOf(later, 0)).toBe('That one cost you, but it is not your biggest fix. Look later.')
-    const earlier = [MISTAKE, BEST, SLIP, BEST]
-    expect(hintOf(earlier, 2)).toBe('That one cost you, but it is not your biggest fix. Look earlier.')
-  })
-
-  it('rule 9: it cost nothing by itself; points to the nearest best place', () => {
-    const choices = [BEST, BEST, MISTAKE, BEST]
-    expect(hintOf(choices, 0)).toBe('That one cost nothing by itself. Look later.')
-    expect(hintOf(choices, 3)).toBe('That one cost nothing by itself. Look earlier.')
-  })
-
-  it('rules 8 and 9: an equal distance to two best places goes to the earlier one', () => {
-    expect(hintOf([MISTAKE, BEST, MISTAKE, BEST], 1)).toBe('That one cost nothing by itself. Look earlier.')
-    expect(hintOf([MISTAKE, SLIP, MISTAKE, BEST], 1)).toBe('That one cost you, but it is not your biggest fix. Look earlier.')
-  })
-
-  it('never names an option or a grade', () => {
-    const lines = [0, 1, 2, 3, 4].flatMap((g) => [hintOf([RAISE, BEST, HIT, BEST], g), hintOf([BEST, BEST, BEST, BEST], g)])
-    for (const line of lines) expect(line).not.toMatch(/slip|mistake|blunder|best way|option/i)
   })
 })
 

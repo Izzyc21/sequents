@@ -1,14 +1,16 @@
 /**
- * /run/:id: play a run, look back at it, rewind, then read the debrief.
+ * /run/:id: play a run, look back at it, take its one last chance, then read
+ * the debrief.
  *
  * The run comes live from the `runs` collection (players can read only their
  * own). Each decision is two steps: commit to an approach (no switching
  * after), then pick one of its ways and lock it in. The commit, the lock-in,
- * rewinds, hints and the reveal all go through actions; when one lands, the
- * server updates the run row and this page re-renders from it, so a reload
- * shows the same committed approach. A finished run shows the look-back
- * screen (no score) until the player asks for the exact score, then the
- * debrief with the tunnel strip.
+ * the last chance (rewind) and the reveal all go through actions; when one
+ * lands, the server updates the run row and this page re-renders from it, so
+ * a reload shows the same committed approach. A finished first try shows the
+ * look-back screen (total score, no reasons) until its last chance is used
+ * or the player keeps it as it is; then the debrief with the tunnel strip.
+ * A last-chance run goes straight to its debrief.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -42,6 +44,8 @@ export default function RunPage() {
   const { records, status } = useQuery<RunRow>('runs', { where: { recordId: id } })
   const run = records[0]?.data
   const parent = useQuery<RunRow>('runs', { where: { recordId: run?.parentRunId || 'none' } }).records[0]?.data
+  const childRow = useQuery<RunRow>('runs', { where: { parentRunId: id || 'none' }, limit: 1 }).records[0]
+  const lastChance = childRow ? { id: childRow.recordId, done: childRow.data.status === 'done' } : undefined
   const [pending, setPending] = useState(false)
 
   if (!run) {
@@ -79,9 +83,9 @@ export default function RunPage() {
 
   const commit = (approach: number) => act('Could not choose that approach', () => runAction('commit', { runId: id, decision, approach }))
   const lockIn = (choice: number) => act('That choice did not go through', () => runAction('choose', { runId: id, decision, choice }))
-  const reveal = () => act('Could not show the score', () => runAction('reveal', { runId: id }))
+  const reveal = () => act('Could not show where your points went', () => runAction('reveal', { runId: id }))
   const rewind = async (to: number) => {
-    const res = await act('Could not rewind', () => runAction<{ runId: string }>('rewind', { runId: id, decision: to }))
+    const res = await act('Could not start your last chance', () => runAction<{ runId: string }>('rewind', { runId: id, decision: to }))
     if (res) navigate(`/run/${res.runId}`)
   }
   const restart = async () => {
@@ -126,19 +130,18 @@ export default function RunPage() {
           />
         </>
       ) : scoreVisible(run) ? (
-        <Debrief run={run} runId={id} pending={pending} onRewind={rewind} onRestart={restart} />
+        <Debrief
+          run={run}
+          runId={id}
+          parent={parent}
+          kept={keepsLaterChoices(run, parent)}
+          lastChanceId={lastChance?.id}
+          pending={pending}
+          onRestart={restart}
+        />
       ) : (
         <>
-          <LookBack
-            run={run}
-            runId={id}
-            parent={parent}
-            kept={keepsLaterChoices(run, parent)}
-            pending={pending}
-            onRewind={rewind}
-            onReveal={reveal}
-            onError={(message) => toast.error('Could not get a hint', message)}
-          />
+          <LookBack run={run} lastChance={lastChance} pending={pending} onRewind={rewind} onReveal={reveal} />
           <div className="mt-6">
             <BackLink />
           </div>
@@ -191,7 +194,8 @@ function DecisionCard({
       <Frame answersId={answersId} slot={index} />
       {arrival && (
         <p className="mt-3 rounded-md border border-primary/40 bg-accent/30 p-3 text-sm text-foreground" data-testid="arrival">
-          Change your choice here. Everything after it stays as you played it last time and plays out again from your new choice.
+          Your last chance: change your choice here. Everything after it stays as you played it last time and plays out again from your
+          new choice.
         </p>
       )}
 
@@ -239,17 +243,29 @@ function DecisionCard({
   )
 }
 
+/**
+ * The debrief: score, every lost point and, where unlocked, its reason. For a
+ * last-chance run it also gives the first try's score and marks each later
+ * decision as changed, the same, or the same choice playing out differently
+ * (only when the later choices were kept: `kept`). A first try links to its
+ * last chance when it had one.
+ */
 function Debrief({
   run,
   runId,
+  parent,
+  kept,
+  lastChanceId,
   pending,
-  onRewind,
   onRestart,
 }: {
   run: RunRow
   runId: string
+  /** The first try this run is the last chance of, when it loaded. */
+  parent: RunRow | undefined
+  kept: boolean
+  lastChanceId: string | undefined
   pending: boolean
-  onRewind: (decision: number) => void
   onRestart: () => void
 }) {
   const ending = run.ending || 'bad'
@@ -268,7 +284,7 @@ function Debrief({
     }
   }, [runId])
 
-  // This player's finished runs of the same scenario and seed version (read 'own': only their own rows reach the page): first try and best revealed.
+  // This player's finished runs of the same scenario and seed version (read 'own': only their own rows reach the page): first try and best so far.
   // Newest first, so the latest runs always count. One row past the window is fetched only to learn whether older runs exist: when they
   // do, the first try may be among them, so it is not claimed, and the best is labelled as covering the window only.
   const { records: fetched } = useQuery<RunRow>('runs', {
@@ -303,8 +319,8 @@ function Debrief({
           {history && (
             <li data-testid="history">
               {windowFull
-                ? `Your first try: not shown (you have more than ${HISTORY_WINDOW} finished runs here). Best revealed in your last ${HISTORY_WINDOW}: ${history.best ?? run.score}.`
-                : `Your first try: ${history.first ?? 'not revealed yet'}. Best you have revealed: ${history.best ?? run.score}.`}
+                ? `Your first try: not shown (you have more than ${HISTORY_WINDOW} finished runs here). Best in your last ${HISTORY_WINDOW}: ${history.best}.`
+                : `Your first try: ${history.first}. Best so far: ${history.best}.`}
             </li>
           )}
           <li>This beats {run.beats}% of all possible paths.</li>
@@ -316,14 +332,24 @@ function Debrief({
               Your biggest single fix is decision {run.fix.decision + 1}: changing it alone could win back up to {run.fix.gain} of the {lost}{' '}
               points you lost.
             </p>
-            <Button className="mt-2" size="sm" disabled={pending} onClick={() => onRewind(run.fix.decision)}>
-              Retry your biggest loss
-            </Button>
           </div>
         )}
+        {run.branchAt >= 0 && parent && (
+          <p className="mt-4 text-sm text-foreground" data-testid="first-try">
+            This was your last chance on that run. Your first try scored {parent.score}.
+          </p>
+        )}
         {run.branchAt >= 0 && (
-          <Link to={`/compare/${runId}`} className="mt-4 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline">
-            Compare with the run you rewound →
+          <Link to={`/compare/${runId}`} className="mt-2 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline">
+            Compare with your first try →
+          </Link>
+        )}
+        {lastChanceId && (
+          <Link
+            to={`/run/${lastChanceId}`}
+            className="mt-4 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Open your last chance on this run →
           </Link>
         )}
       </div>
@@ -332,13 +358,17 @@ function Debrief({
 
       <h2 className="mt-8 text-lg font-semibold text-foreground">Every point you lost</h2>
       <p className="text-sm text-muted-foreground">
-        The reason behind a lost point unlocks once you have tried two different choices at that decision. Rewind any decision to try
-        another.
+        The reason behind a lost point unlocks once you have tried two different choices at that decision, in your last chance or in a
+        new run from the start.
       </p>
       {explainError && <p className="mt-2 text-sm text-destructive">Reasons could not load: {explainError}</p>}
       <ol className="mt-4 space-y-4" data-testid="demerits">
         {run.steps.map((step, i) => {
           const why = explained?.[i]
+          const branch = run.branchAt >= 0 && i === run.branchAt
+          const later = kept && parent !== undefined && i > run.branchAt
+          const same = later && parent.choices[i] === run.choices[i]
+          const differs = same && parent.outcomes[i] !== run.outcomes[i]
           return (
             <li key={i} className={cn('rounded-lg border p-4', i === run.fix.decision ? 'border-primary' : 'border-border')}>
               <div className="flex flex-wrap items-center gap-2">
@@ -346,10 +376,19 @@ function Debrief({
                 <Badge variant={GRADE_BADGE[step.grade]} size="sm">
                   {gradeLine(step.grade)}
                 </Badge>
+                {(branch || (later && !same)) && (
+                  <span className="rounded-full border border-primary px-2 py-0.5 text-xs font-medium text-foreground">Changed</span>
+                )}
+                {same && (
+                  <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    Same as last time
+                  </span>
+                )}
               </div>
               <p className="mt-2 text-sm text-muted-foreground">{run.snapshot.decisions[i].prompt}</p>
               <p className="mt-1 font-medium text-foreground">You: {choiceText(run.snapshot.decisions[i], run.choices[i])}</p>
               <p className="mt-2 text-sm text-foreground/90">{run.outcomes[i]}</p>
+              {differs && <p className="mt-2 text-sm font-medium text-foreground">This played out differently this time.</p>}
               {step.causedBy >= 0 && (
                 <p className="mt-2 text-sm text-warning-foreground" data-testid="caused-by">
                   This would have been a {gradeLine(step.base).toLowerCase()}, but your choice at decision {step.causedBy + 1} made it
@@ -368,9 +407,6 @@ function Debrief({
                   `Reason locked: try a different choice here to unlock it (${why.tried} of 2 tried).`
                 )}
               </p>
-              <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => onRewind(i)}>
-                Rewind to decision {i + 1}
-              </Button>
             </li>
           )
         })}

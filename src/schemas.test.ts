@@ -67,7 +67,7 @@ describe('runs columns', () => {
     }
   })
 
-  it('declare hidden as its own number column, so a reveal and a hint never write the same column', () => {
+  it('declare hidden as its own number column, so a reveal never rewrites the lookback column older rows carry', () => {
     expect(runsSchema.columns.find((col) => col.name === 'hidden')).toMatchObject({ storage: 'number', interpretation: 'plain' })
   })
 })

@@ -1,103 +1,81 @@
 /**
- * The look-back screen of a finished run whose score is still hidden: how it
- * went in one line, what happened at each decision, the other options at each
- * decision, the neutral question "which decision would you change, if any?"
- * with a way to try a change (rewind), one optional hint, and a low-key link
- * to reveal the exact score.
- * It holds no grade, number or explanation; those come after reveal.
+ * The look-back screen of a finished first try, before its debrief: the total
+ * score and how it ended, what happened at each decision, the other options
+ * at each decision, and its one last chance: change any one decision, once
+ * (rewind). It shows no grade, no per-decision points and no reason, so
+ * nothing says where the points went; the debrief shows that after the last
+ * chance is used, or at once if the player chooses to keep the run as it is.
+ * A rewound run saved by an earlier version of the app can also land here
+ * (it ended hidden); it gets no last chance of its own, only the reveal.
  */
-import { useState } from 'react'
-import { Button, cn } from '@/components/ui'
-import { BAND_LINE, choiceText } from './labels'
-import { runAction } from './runAction'
+import { Link } from 'react-router-dom'
+import { Button } from '@/components/ui'
+import { choiceText } from './labels'
 import { fromChoice } from './engine'
-import { DECISIONS, type RunRow } from './types'
-
-const NOWHERE = DECISIONS
+import type { RunRow } from './types'
 
 export function LookBack({
   run,
-  runId,
-  parent,
-  kept,
+  lastChance,
   pending,
   onRewind,
   onReveal,
-  onError,
 }: {
   run: RunRow
-  runId: string
-  /** The run this one was rewound from, when it loaded. */
-  parent: RunRow | undefined
-  /** True when this rewound run carried its later choices over from `parent` (keepsLaterChoices); only then are later rows marked. */
-  kept: boolean
+  /** This first try's last-chance run, once one is started. */
+  lastChance: { id: string; done: boolean } | undefined
   pending: boolean
   onRewind: (decision: number) => void
   onReveal: () => void
-  onError: (message: string) => void
 }) {
-  const ending = run.ending || 'bad'
-  const [asking, setAsking] = useState(false)
-  const [guess, setGuess] = useState<number | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [given, setGiven] = useState('')
-  const stored = run.lookback && run.lookback.hintGuess >= 0 ? run.lookback.hint : ''
-  const hint = stored || given
-
-  async function askHint() {
-    if (guess === null) return
-    setBusy(true)
-    try {
-      const res = await runAction<{ hint: string }>('hint', { runId, decision: guess })
-      setGiven(res.hint)
-      setAsking(false)
-    } catch (e) {
-      onError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
+  const closed = lastChance !== undefined || !!run.parentRunId
   return (
     <section className="mt-8" data-testid="lookback" aria-labelledby="lookback-heading">
       <h2 id="lookback-heading" className="text-xl font-semibold text-foreground">
         Look back
       </h2>
       <div className="mt-3 rounded-lg border border-border bg-card p-5">
-        <p className="font-medium text-foreground" data-testid="band-line">
-          {BAND_LINE[ending]}
+        <p className="text-4xl font-bold tracking-tight text-foreground" data-testid="lookback-score">
+          {run.score}
+          <span className="text-lg font-medium text-muted-foreground"> / 100</span>
         </p>
-        <p className="mt-2 text-foreground/90">{run.endingText}</p>
+        <p className="mt-3 text-foreground/90">{run.endingText}</p>
       </div>
-      <h3 className="mt-8 text-lg font-semibold text-foreground">Which decision would you change, if any?</h3>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Try one and see how it plays out before you see any score. If you would keep them all, you can stop here.
-      </p>
+
+      {lastChance ? (
+        <div className="mt-8 rounded-lg border border-primary/40 bg-accent/30 p-4" data-testid="last-chance-started">
+          <p className="text-foreground">
+            {lastChance.done
+              ? 'Your last chance is finished. Its result shows where your points went on both tries.'
+              : 'Your last chance is in progress. Finish it to see where your points went on both tries.'}
+          </p>
+          <Link
+            to={`/run/${lastChance.id}`}
+            className="mt-2 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            {lastChance.done ? 'Open your last chance →' : 'Continue your last chance →'}
+          </Link>
+        </div>
+      ) : run.parentRunId ? null : (
+        <>
+          <h3 className="mt-8 text-lg font-semibold text-foreground">One last chance</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            You can change one decision, once. Everything after it stays as you played it and plays out again from your new choice.
+            Then you see where every point went, on both tries.
+          </p>
+        </>
+      )}
+
       <ol className="mt-4 space-y-4" data-testid="lookback-rows">
         {run.choices.map((choice, i) => {
           const decision = run.snapshot.decisions[i]
           const { approach: taken, way: wayTaken } = fromChoice(choice)
-          const branch = run.branchAt >= 0 && i === run.branchAt
-          const later = kept && parent !== undefined && i > run.branchAt
-          const same = later && parent.choices[i] === choice
-          const differs = same && parent.outcomes[i] !== run.outcomes[i]
           return (
             <li key={i} className="rounded-lg border border-border p-4" data-testid="lookback-row">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decision {i + 1}</span>
-                {(branch || (later && !same)) && (
-                  <span className="rounded-full border border-primary px-2 py-0.5 text-xs font-medium text-foreground">Changed</span>
-                )}
-                {same && (
-                  <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                    Same as last time
-                  </span>
-                )}
-              </div>
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decision {i + 1}</span>
               <p className="mt-2 text-sm text-muted-foreground">{decision.prompt}</p>
               <p className="mt-1 font-medium text-foreground">You: {choiceText(decision, choice)}</p>
               <p className="mt-2 text-sm text-foreground/90">{run.outcomes[i]}</p>
-              {differs && <p className="mt-2 text-sm font-medium text-foreground">This played out differently this time.</p>}
               <details className="mt-3 text-sm">
                 <summary className="cursor-pointer text-muted-foreground">Other options at this decision</summary>
                 <p className="mt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Other ways in your approach</p>
@@ -109,64 +87,24 @@ export function LookBack({
                   {decision.approaches.flatMap((a, k) => (k === taken ? [] : [<li key={k}>{a.text}</li>]))}
                 </ul>
               </details>
-              <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => onRewind(i)}>
-                Change this one<span className="sr-only"> (decision {i + 1})</span>
-              </Button>
+              {!closed && (
+                <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => onRewind(i)}>
+                  Change this one<span className="sr-only"> (decision {i + 1})</span>
+                </Button>
+              )}
             </li>
           )
         })}
       </ol>
 
-      <div className="mt-6">
-        {hint ? (
-          <p className="rounded-md border border-border bg-accent/30 p-3 text-sm text-foreground" data-testid="hint">
-            <span className="font-medium">Your hint: </span>
-            {hint}
-          </p>
-        ) : asking ? (
-          <fieldset className="rounded-md border border-border p-3" data-testid="hint-picker">
-            <legend className="px-1 text-sm font-medium text-foreground">Which decision would you change, if any?</legend>
-            <div className="mt-1 space-y-1">
-              {[...Array(DECISIONS).keys(), NOWHERE].map((d) => (
-                <label key={d} className="flex min-h-9 cursor-pointer items-center gap-2 text-sm text-foreground">
-                  <input type="radio" name="hint-guess" checked={guess === d} onChange={() => setGuess(d)} />
-                  {d === NOWHERE ? 'None, I would keep them all' : `Decision ${d + 1}`}
-                </label>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <Button size="sm" disabled={guess === null} loading={busy} onClick={askHint}>
-                Get my hint
-              </Button>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => setAsking(false)}>
-                Cancel
-              </Button>
-            </div>
-          </fieldset>
-        ) : (
-          <button
-            type="button"
-            className="min-h-9 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
-            onClick={() => setAsking(true)}
-          >
-            Ask for a hint
-          </button>
-        )}
-      </div>
-
-      <div className="mt-10 border-t border-border pt-4">
-        <button
-          type="button"
-          disabled={pending}
-          className={cn(
-            'min-h-9 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground',
-            pending && 'cursor-not-allowed opacity-50',
-          )}
-          onClick={onReveal}
-        >
-          Show my exact score
-        </button>
-      </div>
+      {(!lastChance || lastChance.done) && (
+        <div className="mt-10 border-t border-border pt-4">
+          <Button variant="outline" size="sm" disabled={pending} onClick={onReveal}>
+            {closed ? 'See where my points went' : 'Keep it and see where my points went'}
+          </Button>
+          {!closed && <p className="mt-2 text-xs text-muted-foreground">This uses up your last chance on this run.</p>}
+        </div>
+      )}
     </section>
   )
 }
