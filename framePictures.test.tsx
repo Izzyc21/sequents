@@ -83,10 +83,10 @@ describe('password notice versions', () => {
 
   it('shows the sign-in page address, log row and phone line that differ at decision 1', () => {
     const [x, y] = [visible(a.d1!), visible(b.d1!)]
-    expect(x).toContain('https://login.microsoftonline.com.hf-secure-id.example/common/oauth2')
+    expect(x).toContain('https://login.microsoftonline.com.hf-secure-id.exa/common/oauth2')
     expect(x).toContain('Amsterdam')
     expect(x).not.toContain('Location: New York')
-    expect(y).toContain('https://login.microsoftonline.com/harlowfinch.example/oauth2/authorize')
+    expect(y).toContain('https://login.microsoftonline.com/harlowfinch.exa/oauth2/authorize')
     expect(y).toContain('Location: New York')
     expect(y).not.toContain('Amsterdam')
     expect(y).not.toContain('hf-secure-id')
@@ -94,7 +94,7 @@ describe('password notice versions', () => {
 
   it('shows the link domain, change calendar and inbox row that differ at decision 3', () => {
     const [x, y] = [visible(a.d3!), visible(b.d3!)]
-    expect(x).toContain('hf-secure-id.example')
+    expect(x).toContain('hf-secure-id.exa')
     expect(x).toContain('Newly registered (3 days old)')
     expect(x).toContain('Nothing booked')
     expect(x).not.toContain('Password change, all staff')
@@ -111,7 +111,7 @@ describe('password notice versions', () => {
 
   it('keeps the setting free of any sign of which version it is', () => {
     const out = visible(a.setting!)
-    expect(out).toContain('https://go.harlowfinch.example/r/7Fq2')
+    expect(out).toContain('https://go.harlowfinch.exa/r/7Fq2')
     expect(out).not.toMatch(/microsoftonline|hf-secure|Amsterdam|Newly registered|Nothing booked|all staff/)
   })
 })

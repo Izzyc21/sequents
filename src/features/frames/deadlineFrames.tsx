@@ -39,7 +39,7 @@ export const DEADLINE_TEXT = {
   },
   d2: {
     caption: 'Today, 11:15 PM. The portal and the essay.',
-    url: 'https://courses.northfield.example/submit',
+    url: 'https://courses.northfield.exa/submit',
     tab: 'Course portal: Submit',
     heading: 'Upload your essay',
     drop: 'Choose file',
@@ -51,7 +51,7 @@ export const DEADLINE_TEXT = {
   },
   d3: {
     caption: 'Today, 11:42 PM. The portal.',
-    url: 'https://courses.northfield.example/submit',
+    url: 'https://courses.northfield.exa/submit',
     tab: 'Course portal: Submit',
     status: 'Submitting…',
     classmate: ['Classmate', 'mine is stuck too'],
@@ -59,7 +59,7 @@ export const DEADLINE_TEXT = {
   },
   d4: {
     caption: 'Today, 11:55 PM. The portal after the upload.',
-    url: 'https://courses.northfield.example/submit',
+    url: 'https://courses.northfield.exa/submit',
     tab: 'Course portal: Submit',
     file: 'essay-final.docx, 100% uploaded',
     status: 'Status: Draft, not submitted',

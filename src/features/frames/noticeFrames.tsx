@@ -21,20 +21,20 @@ const LOG_COLUMNS = ['Time', 'User', 'City', 'App', 'Result']
 export const NOTICE_TEXT = {
   email: {
     fromName: 'IT Support',
-    fromAddress: 'support@harlowfinch.example',
+    fromAddress: 'support@harlowfinch.exa',
     to: 'All staff',
     date: 'Today, 9:05 AM',
     subject: 'Your password expires today',
     body: ['Hello,', 'Your Harlow & Finch password expires at 5:00 PM today. Use the button below to keep your account active.', 'IT Support'],
     linkLabel: 'Keep my account active',
-    linkUrl: 'https://go.harlowfinch.example/r/7Fq2',
+    linkUrl: 'https://go.harlowfinch.exa/r/7Fq2',
     caption: 'Today, 9:05 AM. The email as it arrived, and Dana at your desk at 9:20 AM.',
     dana: 'I clicked it, typed my password and approved the prompt on my phone.',
   },
   d1: {
     caption: "Today, 9:22 AM. Dana's laptop, her phone and the admin console.",
     tab: 'Sign in to your account',
-    page: ['Sign in', 'Work email: dana.reyes@harlowfinch.example', 'Password: ********'],
+    page: ['Sign in', 'Work email: dana.reyes@harlowfinch.exa', 'Password: ********'],
     payroll: 'Payroll run: step 3 of 5',
     sticky: 'Payroll due 12:00 PM',
     logTitle: 'Admin console: sign-in log',
@@ -44,7 +44,7 @@ export const NOTICE_TEXT = {
     phoneAt: '9:19 AM',
     byVersion: [
       {
-        url: 'https://login.microsoftonline.com.hf-secure-id.example/common/oauth2',
+        url: 'https://login.microsoftonline.com.hf-secure-id.exa/common/oauth2',
         rows: [
           ['9:19 AM', 'Dana Reyes', 'Amsterdam', 'Firefox on Linux', 'Success'],
           ['8:47 AM', 'Dana Reyes', 'New York', 'Edge on Windows', 'Success'],
@@ -53,7 +53,7 @@ export const NOTICE_TEXT = {
         prompt: 'Approve sign-in? Location: Amsterdam',
       },
       {
-        url: 'https://login.microsoftonline.com/harlowfinch.example/oauth2/authorize',
+        url: 'https://login.microsoftonline.com/harlowfinch.exa/oauth2/authorize',
         rows: [
           ['9:19 AM', 'Dana Reyes', 'New York', 'Edge on Windows', 'Success'],
           ['8:47 AM', 'Dana Reyes', 'New York', 'Edge on Windows', 'Success'],
@@ -86,7 +86,7 @@ export const NOTICE_TEXT = {
     filterTitle: 'Web filter console: link destination (after the redirect)',
     tiles: ['312 blocked this week', 'Firewall: no alerts'],
     senderTitle: 'Web filter console: sender domain',
-    sender: { label: 'harlowfinch.example', value: 'Business, allowed' },
+    sender: { label: 'harlowfinch.exa', value: 'Business, allowed' },
     policyTitle: 'IT change calendar: this week',
     inboxTitle: 'Inbox',
     commonRows: [
@@ -97,7 +97,7 @@ export const NOTICE_TEXT = {
     byVersion: [
       {
         filter: [
-          { label: 'Domain', value: 'hf-secure-id.example' },
+          { label: 'Domain', value: 'hf-secure-id.exa' },
           { label: 'Category', value: 'Newly registered (3 days old)' },
           { label: 'Action', value: 'Allowed' },
         ],

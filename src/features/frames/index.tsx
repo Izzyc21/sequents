@@ -37,6 +37,8 @@ function FrameFigure({ spec }: { spec: FrameSpec }) {
   return (
     <figure aria-label={spec.title} className="my-3">
       {spec.render()}
+      {/* The pictures use the made-up ending .exa so no address can belong to a real site. */}
+      <figcaption className="mt-1 text-xs text-muted-foreground">In these pictures, .exa is a normal, trusted address ending, like .com.</figcaption>
     </figure>
   )
 }

@@ -55,11 +55,11 @@ export function EmailArrived({ email, aside }: { email: ArrivedEmail; aside?: Re
 
 const SAMPLE: ArrivedEmail = {
   fromName: 'IT Support',
-  fromAddress: 'support@harlowfinch.example',
-  to: 'all-staff@harlowfinch.example',
+  fromAddress: 'support@harlowfinch.exa',
+  to: 'all-staff@harlowfinch.exa',
   date: 'Tue 9:14 AM',
   subject: 'Your password expires today',
-  linkUrl: 'https://harlowfinch.example/password',
+  linkUrl: 'https://harlowfinch.exa/password',
   caption: 'Tuesday, 9:14 AM. The email in your inbox.',
 }
 

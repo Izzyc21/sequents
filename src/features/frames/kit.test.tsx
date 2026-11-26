@@ -52,9 +52,9 @@ describe('frame kit', () => {
 
   it('sample frame names the sender address and where the link leads', () => {
     const out = html(sampleEmailFrame.render())
-    expect(out).toContain('support@harlowfinch.example')
+    expect(out).toContain('support@harlowfinch.exa')
     expect(out).toContain('Link goes to')
-    expect(out).toContain('https://harlowfinch.example/password')
+    expect(out).toContain('https://harlowfinch.exa/password')
   })
 
   it('draws the inbox list, log table, console card and tile with every word as text', () => {
