@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from 'deepspace'
 import { Badge, Button, cn, useToast } from '@/components/ui'
-import { EarlierFrames, Frame } from '../../../../features/frames'
+import { Frame, PictureViewer } from '../../../../features/frames'
 import type { Explained } from '../../../../actions/play'
 import { choiceText, ENDING_BADGE, ENDING_LABEL, GRADE_BADGE, gradeLine, scoreSum } from '../../../../features/play/labels'
 import { LookBack } from '../../../../features/play/LookBack'
@@ -102,11 +102,10 @@ export default function RunPage() {
       </Link>
       <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground">{snapshot.title}</h1>
       <p className="mt-4 text-foreground/90">{snapshot.setting}</p>
-      <Frame answersId={run.answersId} slot="setting" />
+      {run.status !== 'playing' && <Frame answersId={run.answersId} slot="setting" />}
 
       {run.status === 'playing' ? (
         <>
-          <EarlierFrames answersId={run.answersId} upTo={decision} />
           {outcomes.length > 0 && (
             <ol className="mt-6 space-y-4" data-testid="story-so-far">
               {outcomes.map((outcome, i) => (
@@ -199,7 +198,7 @@ function DecisionCard({
         Decision {index + 1} of {DECISIONS}
       </p>
       <h2 className="mt-1 text-lg font-semibold text-foreground">{decision.prompt}</h2>
-      <Frame answersId={answersId} slot={index} />
+      <PictureViewer answersId={answersId} upTo={index} />
       {arrival && (
         <p className="mt-3 rounded-md border border-primary/40 bg-accent/30 p-3 text-sm text-foreground" data-testid="arrival">
           Your last chance: change your choice here. Everything after it stays as you played it last time and plays out again from your

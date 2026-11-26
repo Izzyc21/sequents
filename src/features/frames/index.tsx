@@ -6,6 +6,7 @@
  * version, so an old run keeps the pictures (or the lack of them) it was
  * played with; version n uses the entry's `variants[n - 1]` when present.
  */
+import { useState } from 'react'
 import { FRAMES } from './registry'
 import type { FrameEntry, FrameSet, FrameSlot, FrameSpec } from './types'
 
@@ -48,20 +49,40 @@ export function Frame({ answersId, slot }: { answersId: string; slot: FrameSlot 
 }
 
 /**
- * The setting picture and the pictures of decisions before `upTo`,
- * folded away so a player can look back at them.
+ * One picture at a time for the decision at index `upTo`: it opens on that
+ * decision's picture, and Earlier / Later step through the opening picture
+ * and the pictures of the decisions before it, so the screen never shows
+ * two pictures at once. Renders nothing when the run has no pictures.
  */
-export function EarlierFrames({ answersId, upTo }: { answersId: string; upTo: number }) {
+export function PictureViewer({ answersId, upTo }: { answersId: string; upTo: number }) {
   const set = framesFor(answersId)
-  if (!set) return null
-  const specs = [set.setting, ...set.decisions.slice(0, Math.max(0, upTo))].filter((s): s is FrameSpec => s !== null)
-  if (specs.length === 0) return null
+  const items: { label: string; spec: FrameSpec }[] = []
+  if (set) {
+    if (set.setting) items.push({ label: 'The start', spec: set.setting })
+    set.decisions.slice(0, Math.max(0, upTo) + 1).forEach((spec, i) => {
+      if (spec) items.push({ label: i === upTo ? `Decision ${i + 1} (now)` : `Decision ${i + 1}`, spec })
+    })
+  }
+  const [shown, setShown] = useState<number | null>(null)
+  if (items.length === 0) return null
+  const at = shown === null || shown >= items.length ? items.length - 1 : shown
+  const button = 'rounded-md border border-border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-40'
   return (
-    <details className="my-3">
-      <summary className="cursor-pointer text-sm">Earlier pictures</summary>
-      {specs.map((spec, i) => (
-        <FrameFigure key={i} spec={spec} />
-      ))}
-    </details>
+    <div className="my-3" data-testid="picture-viewer">
+      <FrameFigure spec={items[at].spec} />
+      {items.length > 1 && (
+        <div className="flex items-center justify-between gap-3">
+          <button type="button" className={button} disabled={at === 0} onClick={() => setShown(at - 1)}>
+            ← Earlier
+          </button>
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            Picture {at + 1} of {items.length}: {items[at].label}
+          </p>
+          <button type="button" className={button} disabled={at === items.length - 1} onClick={() => setShown(at + 1)}>
+            Later →
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
