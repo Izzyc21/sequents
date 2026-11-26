@@ -96,14 +96,14 @@ describe('password notice versions', () => {
     const [x, y] = [visible(a.d3!), visible(b.d3!)]
     expect(x).toContain('hf-secure-id.exa')
     expect(x).toContain('Newly registered (3 days old)')
-    expect(x).toContain('Nothing booked')
+    expect(x).toContain('Booked changes')
     expect(x).not.toContain('Password change, all staff')
-    expect(x).toContain('Printer on floor 2 back in service')
+    expect(x).toContain('Office Wi-Fi reminder')
     expect(x).not.toContain('Password change planned')
     expect(y).toContain('login.microsoftonline.com')
     expect(y).toContain('Sign-in services (Microsoft)')
     expect(y).toContain('Password change, all staff (Sam)')
-    expect(y).not.toContain('Nothing booked')
+    expect(y).not.toContain('Booked changes')
     expect(y).toContain('Password change planned this week')
     expect(y).not.toContain('Printer on floor 2')
     expect(y).not.toContain('hf-secure-id')
@@ -176,12 +176,11 @@ describe('descriptions and visible words', () => {
     const d2 = NOTICE_TEXT.d2
     return {
       setting: [e.fromName, e.fromAddress, e.to, e.date, e.subject, e.linkLabel, e.linkUrl, e.dana, ...e.body],
-      d1: [d1.tab, d1.byVersion[v].url, d1.payroll, d1.sticky, d1.byVersion[v].prompt, ...d1.page, ...d1.byVersion[v].rows.map(cells)],
-      d2: [d2.manager[1], d2.hallway[1], d2.sam[1], d2.sam[2], d2.sticky, d2.cardTitle, ...d2.places.map(pair), ...d2.thoughts.map(thought)],
+      d1: [d1.tab, d1.byVersion[v].url, d1.sticky, d1.byVersion[v].prompt, ...d1.page, ...d1.byVersion[v].rows.map(cells)],
+      d2: [d2.manager[1], d2.hallway[1], d2.cardTitle, ...d2.places.map(pair), ...d2.thoughts.map(thought)],
       d3: [
         ...d3.byVersion[v].filter.map(pair),
         ...d3.byVersion[v].policy.map(pair),
-        ...d3.tiles,
         pair(d3.sender),
         line(d3.byVersion[v].lastRow),
         ...d3.commonRows.map(line),
@@ -288,7 +287,7 @@ describe('pictures agree with the readable text', () => {
     expect(e.d2.caption).toContain('9:40')
     expect(e.d3.caption).toContain('9:55')
     expect(e.d4.caption).toContain('10:30')
-    expect(e.d4.logs[0].value).toBe('30 accounts')
+    expect(e.d4.logs[0].value).toBe('Sign-ins for all 30 accounts')
     expect(e.d2.places[2].value).toContain('1 PM')
     expect(e.email.dana).toMatch(/clicked it, typed my password and approved the prompt on my phone/)
     expect(r).toMatch(/clicked the link, entered her password on the page it opened and approved the phone prompt/)

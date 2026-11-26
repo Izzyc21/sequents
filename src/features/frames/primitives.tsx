@@ -178,18 +178,6 @@ export function SpeechBubble({
       >
         <p className="m-0 text-xs font-bold">{speaker}</p>
         <div>{children}</div>
-        <svg
-          className="absolute -bottom-3"
-          style={right ? { right: 18 } : { left: 18 }}
-          width="18"
-          height="14"
-          viewBox="0 0 18 14"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="M1 0 L9 12 L17 0" fill={FILLS[fill] === FILLS.cream ? PAPER : FILLS[fill]} stroke={INK} strokeWidth="3" strokeLinejoin="round" />
-          <path d="M3 0 L15 0" stroke={FILLS[fill] === FILLS.cream ? PAPER : FILLS[fill]} strokeWidth="5" />
-        </svg>
       </div>
     </div>
   )
@@ -215,10 +203,6 @@ export function Thoughts({ items }: { items: Thought[] }) {
           >
             <p className="m-0 text-xs font-bold" data-thinker="">{thinker} thinks</p>
             <p className="m-0 italic" data-thought="">{text}</p>
-            <svg className="absolute -bottom-4 left-5" width="26" height="16" viewBox="0 0 26 16" aria-hidden="true" focusable="false">
-              <circle cx="6" cy="5" r="4" fill={PAPER} stroke={INK} strokeWidth="2" />
-              <circle cx="16" cy="11" r="2.5" fill={PAPER} stroke={INK} strokeWidth="2" />
-            </svg>
           </div>
         )}
       />

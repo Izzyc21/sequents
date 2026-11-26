@@ -8,7 +8,7 @@
  * Every drawn word comes from NOTICE_TEXT, and the screen-reader description
  * of each picture is built from the same constants, so the two cannot drift.
  */
-import { Character, ConsoleCard, Each, InboxList, LogTable, Panel, Phone, Scene, SpeechBubble, StatTile, StickyNote, Browser, Thoughts, thoughtWords, type Thought } from './kit'
+import { Character, ConsoleCard, Each, InboxList, LogTable, Panel, Phone, Scene, SpeechBubble, StickyNote, Browser, Thoughts, thoughtWords, type Thought } from './kit'
 import { ROSE } from './palette'
 import { EmailArrived } from './settingEmail'
 import type { FrameSet, FrameSpec } from './types'
@@ -35,7 +35,6 @@ export const NOTICE_TEXT = {
     caption: "Today, 9:22 AM. Dana's laptop, her phone and the admin console.",
     tab: 'Sign in to your account',
     page: ['Sign in', 'Work email: dana.reyes@harlowfinch.exa', 'Password: ********'],
-    payroll: 'Payroll run: step 3 of 5',
     sticky: 'Payroll due 12:00 PM',
     logTitle: 'Admin console: sign-in log',
     columns: LOG_COLUMNS,
@@ -64,51 +63,44 @@ export const NOTICE_TEXT = {
     ],
   },
   d2: {
-    caption: 'Today, 9:40 AM. The hallway and the places you can check.',
-    manager: ['Office manager', 'Is that email okay to use?'],
-    hallway: ['Staff', 'Is the email okay to open?'],
-    phoneTime: '9:40',
-    sam: ['Messages: Sam', 'Boarding now. Phone off until we land at 1 PM.', 'Today 6:40 AM'],
-    sticky: 'Sam lands 1 PM',
-    cardTitle: 'Places to check',
+    caption: 'Today, 9:40 AM. The hallway.',
+    hallway: ['Staff in the hallway, to each other', 'Is that email okay?'],
+    manager: ['Office manager, to you', 'People keep asking me about that email. What do I say to them?'],
+    cardTitle: 'Where you could check',
     places: [
-      { label: 'IT page', value: 'Company intranet' },
-      { label: 'IT change calendar', value: 'Shared calendar' },
-      { label: 'Sam (IT lead)', value: 'Phone off until 1 PM' },
+      { label: 'IT page', value: 'On the company intranet' },
+      { label: 'IT change calendar', value: 'Shared, anyone can open it' },
+      { label: 'Sam (IT lead)', value: 'On a flight, phone off until 1 PM' },
     ],
     thoughts: [
-      ['Priya', "If this one is from IT and I ignore it, I'm locked out at 5."],
       ['Office manager', 'Last thing I want is everyone typing their password into that.'],
+      ['Priya', "If this one is from IT and I ignore it, I'm locked out at 5."],
     ] as Thought[],
   },
   d3: {
-    caption: 'Today, 9:55 AM. The web filter console, the IT change calendar and the inbox list.',
-    filterTitle: 'Web filter console: link destination (after the redirect)',
-    tiles: ['312 blocked this week', 'Firewall: no alerts'],
-    senderTitle: 'Web filter console: sender domain',
-    sender: { label: 'harlowfinch.exa', value: 'Business, allowed' },
+    caption: 'Today, 9:55 AM. The web filter, the IT change calendar and your inbox.',
+    filterTitle: "Web filter: where the email's button really leads",
+    senderTitle: "Web filter: the email's sender address",
+    sender: { label: 'harlowfinch.exa', value: 'Business' },
     policyTitle: 'IT change calendar: this week',
-    inboxTitle: 'Inbox',
+    inboxTitle: 'Your inbox',
     commonRows: [
       { time: '9:05 AM', from: 'IT Support', subject: 'Your password expires today', unread: true },
       { time: 'Tue', from: 'Facilities', subject: 'Printer moved to floor 2' },
-      { time: 'Mon', from: 'Accounts', subject: 'Month-end timetable' },
     ],
     byVersion: [
       {
         filter: [
-          { label: 'Domain', value: 'hf-secure-id.exa' },
-          { label: 'Category', value: 'Newly registered (3 days old)' },
-          { label: 'Action', value: 'Allowed' },
+          { label: 'Site', value: 'hf-secure-id.exa' },
+          { label: 'Kind of site', value: 'Newly registered (3 days old)' },
         ],
-        policy: [{ label: 'This week', value: 'Nothing booked' }],
-        lastRow: { time: 'Last Thu', from: 'IT Notices', subject: 'Printer on floor 2 back in service' },
+        policy: [{ label: 'Booked changes', value: 'None' }],
+        lastRow: { time: 'Last Thu', from: 'IT Notices', subject: 'Office Wi-Fi reminder' },
       },
       {
         filter: [
-          { label: 'Domain', value: 'login.microsoftonline.com' },
-          { label: 'Category', value: 'Sign-in services (Microsoft)' },
-          { label: 'Action', value: 'Allowed' },
+          { label: 'Site', value: 'login.microsoftonline.com' },
+          { label: 'Kind of site', value: 'Sign-in services (Microsoft)' },
         ],
         policy: [{ label: 'Today, 5:00 PM', value: 'Password change, all staff (Sam)' }],
         lastRow: { time: 'Last Thu', from: 'IT Notices', subject: 'Password change planned this week' },
@@ -117,15 +109,15 @@ export const NOTICE_TEXT = {
   },
   d4: {
     caption: 'Today, 10:30 AM. The office chat and the sign-in logs.',
+    chatTitle: 'Office group chat',
     chat: [
       ['Priya', 'Is the password email okay to use?'],
       ['Marcus', 'Do I need to do anything before lunch?'],
       ['Lena', 'Dana, are you all right?'],
-      ['Tom', 'Printing is slow again.'],
     ],
-    manager: ['Office manager', 'What should I say to people?'],
+    manager: ['Office manager, to you', 'What should I say to people?'],
     logsTitle: 'Admin console: sign-in logs',
-    logs: [{ label: 'Accounts to review', value: '30 accounts' }],
+    logs: [{ label: 'Still to check', value: 'Sign-ins for all 30 accounts' }],
     thoughts: [
       ['Office manager', "If what I say now changes by noon, they'll stop listening to me."],
       ['Dana', "Please don't make me the example in front of everyone."],
@@ -168,7 +160,7 @@ function d1Spec(v: NoticeVersion): FrameSpec {
   const d = t.byVersion[v]
   const description =
     `Dana's laptop, her phone and the admin console at 9:22 AM. On the laptop, a browser tab titled "${t.tab}" shows a sign-in page. ` +
-    `The address bar reads ${d.url}, with a padlock marked secure. The page reads: ${t.page.join('. ')}. A banner on the laptop reads "${t.payroll}". ` +
+    `The address bar reads ${d.url}, with a padlock marked secure. The page reads: ${t.page.join('. ')}. ` +
     `The admin console sign-in log has the columns ${t.columns.join(', ')}. Its rows: ${d.rows.map(rowWords).join('; ')}. ` +
     `Dana's phone shows a notice from ${t.phoneApp} at ${t.phoneAt}: "${d.prompt}". A sticky note reads "${t.sticky}".`
   return {
@@ -179,7 +171,6 @@ function d1Spec(v: NoticeVersion): FrameSpec {
           <Browser url={d.url} title={t.tab} secure>
             <div className="flex flex-col gap-1">
               <Each items={t.page} render={(line, i) => <p className={i === 0 ? 'm-0 text-base font-extrabold' : 'm-0'}>{line}</p>} />
-              <StatTile>{t.payroll}</StatTile>
             </div>
           </Browser>
           <LogTable title={t.logTitle} columns={t.columns} rows={d.rows} />
@@ -196,21 +187,15 @@ function d1Spec(v: NoticeVersion): FrameSpec {
 function d2Spec(): FrameSpec {
   const t = T.d2
   const description =
-    `The hallway and the places you can check at 9:40 AM. The ${t.manager[0].toLowerCase()} says: "${t.manager[1]}" Staff in the hallway say: "${t.hallway[1]}" ` +
-    `Your phone shows a message from Sam at ${t.sam[2]}: "${t.sam[1]}" A sticky note reads "${t.sticky}". A card titled "${t.cardTitle}" lists: ${pairWords(t.places)}. ${thoughtWords(t.thoughts)}`
+    `The hallway at 9:40 AM. ${t.hallway[0]}: "${t.hallway[1]}" ${t.manager[0]}: "${t.manager[1]}" ` +
+    `A card titled "${t.cardTitle}" lists: ${pairWords(t.places)}. ${thoughtWords(t.thoughts)}`
   return {
-    title: 'Picture: the hallway and the help channels',
+    title: 'Picture: the hallway',
     render: () => (
       <Scene description={description}>
         <Panel caption={t.caption} fill="mint">
+          <SpeechBubble speaker={t.hallway[0]}>{t.hallway[1]}</SpeechBubble>
           <SpeechBubble speaker={t.manager[0]}>{t.manager[1]}</SpeechBubble>
-          <SpeechBubble speaker={t.hallway[0]} side="right">
-            {t.hallway[1]}
-          </SpeechBubble>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <Phone time={t.phoneTime} battery="64%" notices={[{ app: t.sam[0], text: t.sam[1], time: t.sam[2] }]} />
-            <StickyNote>{t.sticky}</StickyNote>
-          </div>
           <ConsoleCard title={t.cardTitle} rows={t.places} />
           <Thoughts items={t.thoughts} />
         </Panel>
@@ -224,18 +209,15 @@ function d3Spec(v: NoticeVersion): FrameSpec {
   const d = t.byVersion[v]
   const rows = [...t.commonRows, d.lastRow]
   const description =
-    `The web filter console, the IT change calendar and the inbox list at 9:55 AM. ` +
-    `Card "${t.filterTitle}": ${pairWords(d.filter)}. Tiles: ${t.tiles.join('; ')}. Card "${t.senderTitle}": ${pairWords([t.sender])}. ` +
+    `The web filter, the IT change calendar and your inbox at 9:55 AM. ` +
+    `Card "${t.filterTitle}": ${pairWords(d.filter)}. Card "${t.senderTitle}": ${pairWords([t.sender])}. ` +
     `Card "${t.policyTitle}": ${pairWords(d.policy)}. ${t.inboxTitle} list, newest first: ${rows.map((r) => `${r.time}, ${r.from}: ${r.subject}`).join('; ')}.`
   return {
-    title: 'Picture: the filter console, the IT change calendar and the inbox',
+    title: 'Picture: the web filter, the IT change calendar and your inbox',
     render: () => (
       <Scene description={description}>
         <Panel caption={t.caption} fill="lavender">
           <ConsoleCard title={t.filterTitle} rows={d.filter} />
-          <div className="flex flex-wrap gap-2">
-            <Each items={t.tiles} render={(tile) => <StatTile>{tile}</StatTile>} />
-          </div>
           <ConsoleCard title={t.senderTitle} rows={[t.sender]} />
           <ConsoleCard title={t.policyTitle} rows={d.policy} />
           <InboxList title={t.inboxTitle} rows={rows} />
@@ -248,17 +230,16 @@ function d3Spec(v: NoticeVersion): FrameSpec {
 function d4Spec(): FrameSpec {
   const t = T.d4
   const description =
-    `The office chat and the sign-in logs at 10:30 AM. Messages: ${t.chat.map(([who, text]) => `${who}: "${text}"`).join(' ')} ` +
+    `The office chat and the sign-in logs at 10:30 AM. ${t.chatTitle}: ${t.chat.map(([who, text]) => `${who}: "${text}"`).join(' ')} ` +
     `${t.manager[0]}: "${t.manager[1]}" A card titled "${t.logsTitle}" lists: ${pairWords(t.logs)}. ${thoughtWords(t.thoughts)}`
   return {
     title: 'Picture: the office chat',
     render: () => (
       <Scene description={description}>
         <Panel caption={t.caption} fill="peach">
+          <p className="m-0 text-xs font-bold">{t.chatTitle}</p>
           <Each items={t.chat} render={([who, text]) => <SpeechBubble speaker={who}>{text}</SpeechBubble>} />
-          <SpeechBubble speaker={t.manager[0]} side="right">
-            {t.manager[1]}
-          </SpeechBubble>
+          <SpeechBubble speaker={t.manager[0]}>{t.manager[1]}</SpeechBubble>
           <ConsoleCard title={t.logsTitle} rows={t.logs} />
           <Thoughts items={t.thoughts} />
         </Panel>

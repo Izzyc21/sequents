@@ -12,7 +12,7 @@ import type { FrameSet, FrameSpec } from './types'
 const LIGHTS: Light[] = [
   { label: 'Power', state: 'on' },
   { label: 'Wi-Fi', state: 'on' },
-  { label: 'WAN', state: 'on' },
+  { label: 'Internet', state: 'on' },
   { label: 'WPS', state: 'amber' },
 ]
 
@@ -54,7 +54,7 @@ export const DEADLINE_TEXT = {
     url: 'https://courses.northfield.exa/submit',
     tab: 'Course portal: Submit',
     status: 'Submitting…',
-    classmate: ['Classmate', 'mine is stuck too'],
+    classmate: ['Classmate, by text', 'mine is stuck too'],
     time: '11:42 PM',
   },
   d4: {
@@ -201,7 +201,7 @@ function d3Spec(): FrameSpec {
               <div className="h-full w-[35%] rounded-full" style={{ background: BLUE }} />
             </div>
           </Browser>
-          <SpeechBubble speaker={t.classmate[0]} side="right">
+          <SpeechBubble speaker={t.classmate[0]}>
             {t.classmate[1]}
           </SpeechBubble>
           <Clock time={t.time} />
